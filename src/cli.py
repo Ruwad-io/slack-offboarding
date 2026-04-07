@@ -11,7 +11,6 @@ Usage:
 
 import os
 import sys
-import time
 import click
 from pathlib import Path
 from dotenv import load_dotenv
@@ -22,12 +21,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Prompt, Confirm
 from rich.text import Text
-from rich.live import Live
-from rich.layout import Layout
-from rich.columns import Columns
 from rich import box
 
-from src.services.slack_cleaner import SlackCleaner, CleanupStats
+from src.services.slack_cleaner import SlackCleaner
 
 console = Console()
 
@@ -215,7 +211,6 @@ def scan():
     console.print()
 
     # Summary
-    with_messages = sum(1 for dm in dms if True)  # we'd need counts cached
     console.print(
         Panel(
             f"[bold]{total_messages}[/bold] messages across [bold]{len(dms)}[/bold] conversations",
@@ -344,7 +339,7 @@ def clean(clean_all: bool, dry_run: bool):
         console=console,
     ) as progress:
         overall = progress.add_task(
-            f"[#6366F1]Overall progress", total=total_msgs
+            "[#6366F1]Overall progress", total=total_msgs
         )
 
         for dm in selected:
@@ -500,7 +495,7 @@ def nuke(dry_run: bool):
             f"[bold green]{total_deleted}[/bold green] messages {action}\n"
             + (f"[bold red]{total_failed}[/bold red] failed\n" if total_failed else "")
             + f"[dim]{len(conversations)} conversations scanned "
-            + f"(DMs + group DMs + channels + threads)[/dim]",
+            + "(DMs + group DMs + channels + threads)[/dim]",
             title="[bold]Mission Complete[/bold]",
             border_style="#10B981",
             padding=(1, 2),

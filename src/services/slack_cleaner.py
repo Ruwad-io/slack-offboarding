@@ -59,6 +59,7 @@ class SlackCleaner:
 
     def _api_call_with_retry(self, api_method, **kwargs):
         """Call a Slack API method with automatic rate-limit retry."""
+        last_error = None
         for attempt in range(5):
             try:
                 return api_method(**kwargs)
@@ -68,9 +69,10 @@ class SlackCleaner:
                     delay = retry_after * (1.5 ** attempt)
                     logger.debug(f"Rate limited, sleeping {delay:.0f}s (attempt {attempt + 1})")
                     time.sleep(delay)
+                    last_error = e
                 else:
                     raise
-        raise SlackApiError("Rate limited after 5 retries", e.response)
+        raise SlackApiError("Rate limited after 5 retries", last_error.response)
 
     def _paginate(self, api_method, result_key, **kwargs):
         """Generic paginated API call. Returns all items across pages."""
