@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.1.0...v1.1.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* reduce concurrency and add read delays to avoid rate limiting ([c627b7f](https://github.com/Ruwad-io/slack-offboarding/commit/c627b7f933d5fff2e496fa22f9a864513939019b))
+
 # [1.1.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.0.2...v1.1.0) (2026-04-07)
 
 
