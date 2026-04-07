@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.4.0...v1.4.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* resolve lint errors — undefined variable, unused f-strings ([9bf19c9](https://github.com/Ruwad-io/slack-offboarding/commit/9bf19c98b3a49539dd9a8be2b2a5966f2405717b))
+
 # [1.4.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.2...v1.4.0) (2026-04-07)
 
 
