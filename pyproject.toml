@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "slack-offboarding"
 version = "0.1.0"
@@ -40,6 +44,9 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/ruwad-io/slack-offboarding"
 Issues = "https://github.com/ruwad-io/slack-offboarding/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.ruff]
 line-length = 100
