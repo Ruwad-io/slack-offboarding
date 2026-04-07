@@ -1,3 +1,15 @@
+# [1.6.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.5.2...v1.6.0) (2026-04-07)
+
+
+### Bug Fixes
+
+* use dynamic PORT for Railway deployment ([bdf05d3](https://github.com/Ruwad-io/slack-offboarding/commit/bdf05d36c056723b918c25bbfbb89e1101981952))
+
+
+### Features
+
+* add logo, favicon, SEO meta tags, sitemap and robots.txt ([db82c1c](https://github.com/Ruwad-io/slack-offboarding/commit/db82c1cb92813c56a28101e24e1a952f04af6af9))
+
 ## [1.5.2](https://github.com/Ruwad-io/slack-offboarding/compare/v1.5.1...v1.5.2) (2026-04-07)
 
 
