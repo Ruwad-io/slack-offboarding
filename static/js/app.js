@@ -280,21 +280,31 @@ function showNukeProgress(job) {
     }
 }
 
-// ---- Load message counts on page load ----
+// ---- Load message counts via SSE (streams one by one) ----
 
-async function loadCounts() {
-    try {
-        const resp = await fetch('/api/conversations');
-        const conversations = await resp.json();
-        conversations.forEach(conv => {
-            const el = document.getElementById(`count-${conv.id}`);
-            if (el) {
-                el.textContent = `${conv.my_message_count} messages`;
+function loadCounts() {
+    const source = new EventSource('/api/counts/stream');
+
+    source.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.done) {
+            source.close();
+            return;
+        }
+
+        const el = document.getElementById(`count-${data.id}`);
+        if (el) {
+            el.textContent = `${data.count} messages`;
+            if (data.count === 0) {
+                el.style.color = '#10B981';
             }
-        });
-    } catch (err) {
-        console.error('Failed to load counts:', err);
-    }
+        }
+    };
+
+    source.onerror = () => {
+        source.close();
+    };
 }
 
 // ---- Helpers ----

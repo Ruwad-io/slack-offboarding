@@ -102,6 +102,28 @@ def api_conversations():
     return jsonify(results)
 
 
+@main_bp.route("/api/counts/stream")
+@require_auth
+def api_counts_stream():
+    """SSE stream that counts messages per conversation one by one."""
+    import json
+    token = session["slack_token"]
+
+    def generate():
+        cleaner = SlackCleaner(token)
+        dms = cleaner.list_dm_conversations()
+        for dm in dms:
+            count = cleaner.count_my_messages(dm["id"])
+            yield f"data: {json.dumps({'id': dm['id'], 'count': count})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @main_bp.route("/api/preview/<channel_id>")
 @require_auth
 def api_preview(channel_id: str):
