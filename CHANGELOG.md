@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/Ruwad-io/slack-offboarding/compare/v1.5.1...v1.5.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* Docker home dir for appuser, update test for nuke endpoint ([ac7e6d4](https://github.com/Ruwad-io/slack-offboarding/commit/ac7e6d4f2cfe36b865caa1f984e70549ec3b4dd4))
+
 ## [1.5.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.5.0...v1.5.1) (2026-04-07)
 
 
