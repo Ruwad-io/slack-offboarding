@@ -11,7 +11,7 @@ FROM base AS runner
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 appuser && \
-    adduser --system --uid 1001 appuser
+    adduser --system --uid 1001 --home /home/appuser appuser
 
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=deps /usr/local/bin/gunicorn /usr/local/bin/gunicorn

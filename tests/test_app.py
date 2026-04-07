@@ -1,14 +1,17 @@
 """Basic tests for the Flask app."""
 
 import pytest
+from unittest.mock import patch, MagicMock
 from src.app import create_app
 
 
 @pytest.fixture
 def app():
-    app = create_app()
-    app.config["TESTING"] = True
-    return app
+    with patch("src.app.JobManager") as mock_jm:
+        mock_jm.return_value = MagicMock()
+        app = create_app()
+        app.config["TESTING"] = True
+        yield app
 
 
 @pytest.fixture
@@ -38,6 +41,6 @@ def test_api_requires_auth(client):
     assert resp.status_code == 302
 
 
-def test_delete_requires_auth(client):
-    resp = client.post("/api/delete-all")
+def test_nuke_requires_auth(client):
+    resp = client.post("/api/nuke")
     assert resp.status_code == 302
