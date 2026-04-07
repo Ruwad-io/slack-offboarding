@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.1...v1.3.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* show admin scope as optional in login instructions ([90f7b41](https://github.com/Ruwad-io/slack-offboarding/commit/90f7b41e0f682d26000ad63a873e26a4b3ff6618))
+
 ## [1.3.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.0...v1.3.1) (2026-04-07)
 
 
