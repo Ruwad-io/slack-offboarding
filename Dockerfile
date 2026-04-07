@@ -19,8 +19,7 @@ COPY . .
 
 USER appuser
 
-EXPOSE 8000
 ENV PORT=8000
 
 # Use gthread worker for SSE streaming support
-CMD ["gunicorn", "src.app:create_app()", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "0", "--worker-class", "gthread"]
+CMD gunicorn "src.app:create_app()" --bind "0.0.0.0:${PORT}" --workers 2 --threads 4 --timeout 0 --worker-class gthread
