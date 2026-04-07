@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════
+  # STAGE 1: Code Quality (parallel)
+  # ═══════════════════════════════════════════════════════════════════
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      - run: pip install ruff black
+      - run: ruff check src/
+      - run: black --check src/
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -v --tb=short
+
+  # ═══════════════════════════════════════════════════════════════════
+  # STAGE 2: Build & Docker
+  # ═══════════════════════════════════════════════════════════════════
+
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build Docker image
+        run: docker build -t slack-offboarding:test .
+      - name: Test container starts
+        run: |
+          docker run -d --name test-app \
+            -e SECRET_KEY=test-ci-key \
+            -e SLACK_CLIENT_ID=test \
+            -e SLACK_CLIENT_SECRET=test \
+            -e SLACK_SIGNING_SECRET=test \
+            -p 8000:8000 \
+            slack-offboarding:test
+
+          # Wait for container to be ready
+          for i in {1..15}; do
+            if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Container is healthy after $i attempts"
+              exit 0
+            fi
+            echo "Attempt $i: waiting..."
+            sleep 2
+          done
+
+          echo "Container failed to start. Logs:"
+          docker logs test-app
+          exit 1

@@ -1,0 +1,44 @@
+[project]
+name = "slack-offboarding"
+version = "0.1.0"
+description = "Clean up your Slack workspace before you leave. Delete DMs, leave channels, and archive your data."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Ruwad", email = "hello@ruwad.dev" }
+]
+keywords = ["slack", "offboarding", "cleanup", "messages", "privacy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications :: Chat",
+]
+
+dependencies = [
+    "flask>=3.0",
+    "slack-sdk>=3.27",
+    "python-dotenv>=1.0",
+    "gunicorn>=22.0",
+    "redis>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "black>=24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ruwad-io/slack-offboarding"
+Issues = "https://github.com/ruwad-io/slack-offboarding/issues"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.black]
+line-length = 100

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OffBoarding — Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <svg width="28" height="28" viewBox="0 0 512 512">
+                <rect x="16" y="16" width="480" height="480" rx="96" fill="#6366F1"/>
+                <rect x="180" y="120" width="152" height="272" rx="8" fill="none" stroke="white" stroke-width="16"/>
+                <circle cx="312" cy="256" r="10" fill="white"/>
+                <circle cx="370" cy="195" r="22" fill="white"/>
+                <line x1="370" y1="217" x2="370" y2="290" stroke="white" stroke-width="14" stroke-linecap="round"/>
+            </svg>
+            <span>OffBoarding</span>
+        </div>
+        <div class="nav-user">
+            <span>{{ user_name }} @ {{ team }}</span>
+            <a href="/auth/logout" class="btn btn-sm btn-outline">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Status banner -->
+        <div id="status-banner" class="banner hidden">
+            <div class="banner-content">
+                <span id="status-text">Processing...</span>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <span id="status-detail"></span>
+            </div>
+        </div>
+
+        <!-- Action bar -->
+        <div class="action-bar">
+            <h2>Your DM Conversations</h2>
+            <div class="action-buttons">
+                <button id="btn-select-all" class="btn btn-sm btn-outline" onclick="toggleSelectAll()">
+                    Select All
+                </button>
+                <button id="btn-dry-run" class="btn btn-sm btn-secondary" onclick="deleteSelected(true)">
+                    Dry Run
+                </button>
+                <button id="btn-delete" class="btn btn-sm btn-danger" onclick="deleteSelected(false)">
+                    Delete Selected
+                </button>
+                <button id="btn-nuke" class="btn btn-sm btn-danger-fill" onclick="deleteAll(false)">
+                    Delete ALL DMs
+                </button>
+            </div>
+        </div>
+
+        <!-- DM List -->
+        <div id="dm-list" class="conversation-list">
+            {% for dm in dms %}
+            <div class="conversation-item" data-channel-id="{{ dm.id }}">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="dm-checkbox" value="{{ dm.id }}">
+                    <div class="conversation-info">
+                        <span class="conversation-name">{{ dm.user_name }}</span>
+                        <span class="conversation-meta" id="count-{{ dm.id }}">loading...</span>
+                    </div>
+                </label>
+                <div class="conversation-actions">
+                    <button class="btn btn-xs btn-outline" onclick="previewMessages('{{ dm.id }}')">
+                        Preview
+                    </button>
+                    <button class="btn btn-xs btn-danger" onclick="deleteChannel('{{ dm.id }}', false)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% if not dms %}
+            <div class="empty-state">
+                <p>No DM conversations found.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if group_dms %}
+        <h2 style="margin-top: 2rem;">Group DMs</h2>
+        <div class="conversation-list">
+            {% for gd in group_dms %}
+            <div class="conversation-item" data-channel-id="{{ gd.id }}">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="dm-checkbox" value="{{ gd.id }}">
+                    <div class="conversation-info">
+                        <span class="conversation-name">{{ gd.name }}</span>
+                        <span class="conversation-meta">{{ gd.purpose }}</span>
+                    </div>
+                </label>
+                <div class="conversation-actions">
+                    <button class="btn btn-xs btn-danger" onclick="deleteChannel('{{ gd.id }}', false)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Preview modal -->
+        <div id="preview-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Message Preview</h3>
+                    <button onclick="closePreview()" class="btn btn-xs btn-outline">Close</button>
+                </div>
+                <div id="preview-body" class="modal-body"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+display_information:
+  name: OffBoarding
+  description: Clean up your Slack messages before you leave. Delete DMs, clean channels, leave with peace of mind.
+  background_color: "#6366F1"
+  long_description: |
+    OffBoarding helps employees cleanly leave a Slack workspace by bulk-deleting
+    their direct messages. Whether you're leaving a company, cleaning up for
+    privacy, or just want a fresh start — OffBoarding makes it easy.
+
+    Features:
+    - Browse all your DM conversations
+    - Preview messages before deletion
+    - Bulk delete your messages (one conversation or all at once)
+    - Dry run mode to simulate without deleting
+    - No data stored on external servers
+
+    Built with privacy in mind. Open source at github.com/ruwad-io/slack-offboarding.
+
+features:
+  bot_user:
+    display_name: OffBoarding
+    always_online: false
+
+oauth_config:
+  redirect_urls:
+    - https://your-app-url.com/auth/callback
+  scopes:
+    user:
+      - channels:history
+      - channels:read
+      - chat:write
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - mpim:history
+      - mpim:read
+      - users:read
+      - users.profile:read
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

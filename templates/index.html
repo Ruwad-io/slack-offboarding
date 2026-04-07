@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OffBoarding — Clean up your Slack</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="landing">
+        <div class="landing-card">
+            <div class="logo">
+                <svg width="48" height="48" viewBox="0 0 512 512">
+                    <rect x="16" y="16" width="480" height="480" rx="96" fill="#6366F1"/>
+                    <rect x="180" y="120" width="152" height="272" rx="8" fill="none" stroke="white" stroke-width="16"/>
+                    <circle cx="312" cy="256" r="10" fill="white"/>
+                    <circle cx="370" cy="195" r="22" fill="white"/>
+                    <line x1="370" y1="217" x2="370" y2="290" stroke="white" stroke-width="14" stroke-linecap="round"/>
+                    <line x1="370" y1="245" x2="340" y2="275" stroke="white" stroke-width="12" stroke-linecap="round"/>
+                    <line x1="370" y1="245" x2="400" y2="270" stroke="white" stroke-width="12" stroke-linecap="round"/>
+                    <line x1="370" y1="290" x2="345" y2="345" stroke="white" stroke-width="12" stroke-linecap="round"/>
+                    <line x1="370" y1="290" x2="400" y2="345" stroke="white" stroke-width="12" stroke-linecap="round"/>
+                    <line x1="355" y1="155" x2="415" y2="155" stroke="white" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+                    <polyline points="400,140 418,155 400,170" fill="none" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+                </svg>
+            </div>
+            <h1>OffBoarding</h1>
+            <p class="tagline">Clean up your Slack before you leave.</p>
+            <p class="description">
+                Delete your DMs, clean up channels, and leave your workspace
+                with peace of mind. Your messages, your choice.
+            </p>
+
+            {% if error %}
+            <div class="error">Authentication failed: {{ error }}</div>
+            {% endif %}
+
+            <a href="/auth/login" class="btn btn-slack">
+                <svg width="20" height="20" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19.712.133a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386h5.376V5.52A5.381 5.381 0 0 0 19.712.133m0 14.365H5.376A5.381 5.381 0 0 0 0 19.884a5.381 5.381 0 0 0 5.376 5.387h14.336a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386" fill="#36C5F0"/>
+                    <path d="M53.76 19.884a5.381 5.381 0 0 0-5.376-5.386 5.381 5.381 0 0 0-5.376 5.386v5.387h5.376a5.381 5.381 0 0 0 5.376-5.387m-14.336 0V5.52A5.381 5.381 0 0 0 34.048.133a5.381 5.381 0 0 0-5.376 5.387v14.364a5.381 5.381 0 0 0 5.376 5.387 5.381 5.381 0 0 0 5.376-5.387" fill="#2EB67D"/>
+                    <path d="M34.048 54a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386h-5.376v5.386A5.381 5.381 0 0 0 34.048 54m0-14.365h14.336a5.381 5.381 0 0 0 5.376-5.386 5.381 5.381 0 0 0-5.376-5.387H34.048a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386" fill="#ECB22E"/>
+                    <path d="M0 34.249a5.381 5.381 0 0 0 5.376 5.386 5.381 5.381 0 0 0 5.376-5.386v-5.387H5.376A5.381 5.381 0 0 0 0 34.25m14.336-.001v14.364A5.381 5.381 0 0 0 19.712 54a5.381 5.381 0 0 0 5.376-5.387V34.249a5.381 5.381 0 0 0-5.376-5.387 5.381 5.381 0 0 0-5.376 5.387" fill="#E01E5A"/>
+                </svg>
+                Sign in with Slack
+            </a>
+
+            <p class="privacy">
+                We only access your messages to delete them. No data is stored on our servers.
+                <a href="https://github.com/ruwad-io/slack-offboarding">View source on GitHub</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
