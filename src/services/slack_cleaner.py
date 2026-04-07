@@ -52,6 +52,7 @@ class SlackCleaner:
         self._user_id = None
         self._user_name = None
         self._user_cache = {}
+        self._scopes = set()
 
     def _api_call_with_retry(self, api_method, **kwargs):
         """Call a Slack API method with automatic rate-limit retry."""
@@ -98,10 +99,20 @@ class SlackCleaner:
             self._fetch_identity()
         return self._user_name
 
+    @property
+    def can_delete_others(self) -> bool:
+        """Whether the token has admin scope to delete other users' messages."""
+        if not self._scopes:
+            self._fetch_identity()
+        return "admin.conversations:write" in self._scopes
+
     def _fetch_identity(self):
         resp = self._api_call_with_retry(self.client.auth_test)
         self._user_id = resp["user_id"]
         self._user_name = resp["user"]
+        # Scopes come back in the response headers
+        scope_header = resp.headers.get("x-oauth-scopes", "")
+        self._scopes = {s.strip() for s in scope_header.split(",") if s.strip()}
 
     def _prefetch_users(self):
         """Bulk-fetch all workspace users into cache."""
@@ -179,7 +190,16 @@ class SlackCleaner:
 
     def get_my_messages(self, channel_id: str, include_threads: bool = True) -> list[dict]:
         """Get all messages sent by the current user, including thread replies."""
-        # 1. Get top-level messages
+        return self._get_messages(channel_id, include_threads=include_threads, only_mine=True)
+
+    def get_all_messages(self, channel_id: str, include_threads: bool = True) -> list[dict]:
+        """Get ALL messages in a conversation (requires admin scope for deletion)."""
+        return self._get_messages(channel_id, include_threads=include_threads, only_mine=False)
+
+    def _get_messages(
+        self, channel_id: str, include_threads: bool = True, only_mine: bool = True
+    ) -> list[dict]:
+        """Get messages from a conversation, optionally filtering to current user only."""
         all_messages = []
         thread_parents = []
         cursor = None
@@ -190,16 +210,15 @@ class SlackCleaner:
                 time.sleep(self.READ_DELAY)
             resp = self._api_call_with_retry(self.client.conversations_history, **kwargs)
             for m in resp["messages"]:
-                if m.get("user") == self.user_id:
+                if not only_mine or m.get("user") == self.user_id:
                     all_messages.append(m)
-                # Track threads that might contain our replies
                 if include_threads and m.get("reply_count", 0) > 0:
                     thread_parents.append(m["ts"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
                 break
 
-        # 2. Fetch thread replies
+        # Fetch thread replies
         if include_threads and thread_parents:
             seen_ts = {m["ts"] for m in all_messages}
             for parent_ts in thread_parents:
@@ -213,9 +232,10 @@ class SlackCleaner:
                         limit=200,
                     )
                     for r in replies:
-                        if r.get("user") == self.user_id and r["ts"] not in seen_ts:
-                            all_messages.append(r)
-                            seen_ts.add(r["ts"])
+                        if r["ts"] not in seen_ts:
+                            if not only_mine or r.get("user") == self.user_id:
+                                all_messages.append(r)
+                                seen_ts.add(r["ts"])
                 except SlackApiError as e:
                     if e.response.get("error") != "thread_not_found":
                         logger.debug(f"Thread fetch failed: {e.response.get('error')}")

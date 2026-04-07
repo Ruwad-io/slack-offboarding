@@ -431,12 +431,19 @@ def nuke(dry_run: bool):
     dm_count = sum(1 for c in conversations if c["type"] == "dm")
     group_count = sum(1 for c in conversations if c["type"] == "group_dm")
     chan_count = sum(1 for c in conversations if c["type"] == "channel")
+    admin_mode = cleaner.can_delete_others
 
     console.print(
         f"  Found [bold]{dm_count}[/bold] DMs, "
         f"[bold]{group_count}[/bold] group DMs, "
-        f"[bold]{chan_count}[/bold] channels\n"
+        f"[bold]{chan_count}[/bold] channels"
     )
+    if admin_mode:
+        console.print(
+            "  [bold yellow]Admin mode:[/bold yellow] will also delete "
+            "[bold]other people's messages[/bold] in your DMs"
+        )
+    console.print()
 
     total_deleted = 0
     total_failed = 0
@@ -454,7 +461,11 @@ def nuke(dry_run: bool):
         )
 
         for conv in conversations:
-            messages = cleaner.get_my_messages(conv["id"])
+            # In admin mode, delete ALL messages in DMs (yours + theirs)
+            if admin_mode and conv["type"] == "dm":
+                messages = cleaner.get_all_messages(conv["id"])
+            else:
+                messages = cleaner.get_my_messages(conv["id"])
 
             if messages:
                 conv_task = progress.add_task(
