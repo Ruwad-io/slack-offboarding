@@ -43,7 +43,7 @@ class CleanupStats:
 class SlackCleaner:
     """Service to clean up a user's Slack messages."""
 
-    DELETE_DELAY = 1.2  # seconds between deletions
+    DELETE_DELAY = 0.5  # seconds between deletions (retry handles rate limits)
     MAX_WORKERS = 2
     READ_DELAY = 0.8  # seconds between read API calls
 
