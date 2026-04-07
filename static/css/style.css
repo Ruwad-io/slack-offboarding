@@ -304,6 +304,58 @@ body {
     color: var(--gray-500);
 }
 
+/* ---- Nuke progress panel ---- */
+.nuke-panel {
+    background: white;
+    border: 2px solid var(--purple);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.nuke-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.nuke-status {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+.nuke-status.running { color: var(--purple); }
+.nuke-status.success { color: var(--green); }
+.nuke-status.error { color: var(--red); }
+
+.nuke-failed {
+    font-size: 0.85rem;
+    color: var(--red);
+    font-weight: 600;
+}
+
+.nuke-details {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--gray-500);
+}
+
+.nuke-current {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    font-style: italic;
+}
+
+.section-title {
+    font-size: 1rem;
+    color: var(--gray-500);
+    margin: 1.5rem 0 0.5rem;
+    font-weight: 600;
+}
+
 /* ---- Utilities ---- */
 .hidden { display: none !important; }
 

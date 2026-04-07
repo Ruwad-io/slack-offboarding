@@ -1,17 +1,21 @@
 """
-Main application routes — dashboard and cleanup actions.
+Main application routes — dashboard, cleanup actions, and SSE streaming.
 """
 
-from flask import Blueprint, render_template, session, redirect, url_for, jsonify, request
+from flask import (
+    Blueprint, render_template, session, redirect, url_for,
+    jsonify, request, Response, current_app, stream_with_context,
+)
 
 from src.services.slack_cleaner import SlackCleaner
+from src.services.job_manager import start_cleanup_job
 
 main_bp = Blueprint("main", __name__)
 
 
 @main_bp.route("/health")
 def health():
-    """Health check endpoint for Railway."""
+    """Health check endpoint."""
     return jsonify({"status": "ok"}), 200
 
 
@@ -44,6 +48,11 @@ def dashboard():
     cleaner = SlackCleaner(session["slack_token"])
     dms = cleaner.list_dm_conversations()
     group_dms = cleaner.list_group_dms()
+    channels = cleaner.list_channels()
+
+    # Check if there's an active job
+    jm = current_app.job_manager
+    active_job = jm.get_active_job(session.get("slack_user_id", ""))
 
     return render_template(
         "dashboard.html",
@@ -51,6 +60,8 @@ def dashboard():
         team=session.get("slack_team", ""),
         dms=dms,
         group_dms=group_dms,
+        channels=channels,
+        active_job=active_job,
     )
 
 
@@ -83,7 +94,7 @@ def api_preview(channel_id: str):
             "text": m.get("text", "")[:100],
             "date": m.get("ts", ""),
         }
-        for m in messages[:50]  # Show max 50 for preview
+        for m in messages[:50]
     ]
 
     return jsonify({"total": len(messages), "preview": preview})
@@ -101,13 +112,62 @@ def api_delete(channel_id: str):
     return jsonify(stats.to_dict())
 
 
-@main_bp.route("/api/delete-all", methods=["POST"])
+# ------------------------------------------------------------------
+# Background job endpoints
+# ------------------------------------------------------------------
+
+
+@main_bp.route("/api/nuke", methods=["POST"])
 @require_auth
-def api_delete_all():
-    """Delete all user messages across all DMs."""
-    dry_run = request.json.get("dry_run", False) if request.is_json else False
+def api_nuke():
+    """Start a full nuke job in the background. Returns job ID."""
+    jm = current_app.job_manager
+    user_id = session.get("slack_user_id", "")
 
-    cleaner = SlackCleaner(session["slack_token"])
-    stats = cleaner.cleanup_all_dms(dry_run=dry_run)
+    # Check for existing active job
+    active = jm.get_active_job(user_id)
+    if active:
+        return jsonify({"error": "A job is already running", "job_id": active["id"]}), 409
 
-    return jsonify(stats.to_dict())
+    job_id = jm.create_job(
+        user_id=user_id,
+        job_type="nuke",
+        token=session["slack_token"],
+    )
+    start_cleanup_job(jm, job_id)
+
+    return jsonify({"job_id": job_id}), 202
+
+
+@main_bp.route("/api/job/<job_id>")
+@require_auth
+def api_job_status(job_id: str):
+    """Get current job status."""
+    jm = current_app.job_manager
+    job = jm.get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
+
+
+@main_bp.route("/api/job/<job_id>/stream")
+@require_auth
+def api_job_stream(job_id: str):
+    """SSE stream of job progress."""
+    jm = current_app.job_manager
+
+    job = jm.get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    def generate():
+        yield from jm.stream_progress(job_id)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

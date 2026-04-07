@@ -6,7 +6,7 @@
     <title>OffBoarding — Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body{% if active_job %} data-active-job-id="{{ active_job.id }}"{% endif %}>
     <nav class="navbar">
         <div class="nav-brand">
             <svg width="28" height="28" viewBox="0 0 512 512">
@@ -25,7 +25,23 @@
     </nav>
 
     <main class="container">
-        <!-- Status banner -->
+        <!-- Nuke progress panel (persistent, survives page refresh) -->
+        <div id="nuke-progress" class="nuke-panel hidden">
+            <div class="nuke-header">
+                <span id="nuke-status" class="nuke-status running">Starting...</span>
+                <span id="nuke-failed" class="nuke-failed hidden">0 failed</span>
+            </div>
+            <div class="progress-bar">
+                <div id="nuke-progress-fill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="nuke-details">
+                <span id="nuke-conversations">0 / 0 conversations</span>
+                <span id="nuke-messages">0 messages deleted</span>
+            </div>
+            <div id="nuke-current" class="nuke-current hidden">Currently: ...</div>
+        </div>
+
+        <!-- Status banner (for single operations) -->
         <div id="status-banner" class="banner hidden">
             <div class="banner-content">
                 <span id="status-text">Processing...</span>
@@ -38,24 +54,25 @@
 
         <!-- Action bar -->
         <div class="action-bar">
-            <h2>Your DM Conversations</h2>
+            <h2>Your Conversations</h2>
             <div class="action-buttons">
                 <button id="btn-select-all" class="btn btn-sm btn-outline" onclick="toggleSelectAll()">
                     Select All
                 </button>
-                <button id="btn-dry-run" class="btn btn-sm btn-secondary" onclick="deleteSelected(true)">
+                <button class="btn btn-sm btn-secondary" onclick="deleteSelected(true)">
                     Dry Run
                 </button>
-                <button id="btn-delete" class="btn btn-sm btn-danger" onclick="deleteSelected(false)">
+                <button class="btn btn-sm btn-danger" onclick="deleteSelected(false)">
                     Delete Selected
                 </button>
-                <button id="btn-nuke" class="btn btn-sm btn-danger-fill" onclick="deleteAll(false)">
-                    Delete ALL DMs
+                <button id="btn-nuke" class="btn btn-sm btn-danger-fill" onclick="startNuke()">
+                    Nuke Everything
                 </button>
             </div>
         </div>
 
         <!-- DM List -->
+        <h3 class="section-title">Direct Messages ({{ dms|length }})</h3>
         <div id="dm-list" class="conversation-list">
             {% for dm in dms %}
             <div class="conversation-item" data-channel-id="{{ dm.id }}">
@@ -85,19 +102,41 @@
         </div>
 
         {% if group_dms %}
-        <h2 style="margin-top: 2rem;">Group DMs</h2>
+        <h3 class="section-title">Group DMs ({{ group_dms|length }})</h3>
         <div class="conversation-list">
             {% for gd in group_dms %}
             <div class="conversation-item" data-channel-id="{{ gd.id }}">
                 <label class="checkbox-label">
                     <input type="checkbox" class="dm-checkbox" value="{{ gd.id }}">
                     <div class="conversation-info">
-                        <span class="conversation-name">{{ gd.name }}</span>
+                        <span class="conversation-name">{{ gd.user_name }}</span>
                         <span class="conversation-meta">{{ gd.purpose }}</span>
                     </div>
                 </label>
                 <div class="conversation-actions">
                     <button class="btn btn-xs btn-danger" onclick="deleteChannel('{{ gd.id }}', false)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if channels %}
+        <h3 class="section-title">Channels ({{ channels|length }})</h3>
+        <div class="conversation-list">
+            {% for ch in channels %}
+            <div class="conversation-item" data-channel-id="{{ ch.id }}">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="dm-checkbox" value="{{ ch.id }}">
+                    <div class="conversation-info">
+                        <span class="conversation-name">{{ ch.user_name }}</span>
+                        <span class="conversation-meta">{{ ch.num_members }} members</span>
+                    </div>
+                </label>
+                <div class="conversation-actions">
+                    <button class="btn btn-xs btn-danger" onclick="deleteChannel('{{ ch.id }}', false)">
                         Delete
                     </button>
                 </div>

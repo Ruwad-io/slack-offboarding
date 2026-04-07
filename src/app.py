@@ -4,6 +4,7 @@ Slack OffBoarding — Flask application factory.
 
 from flask import Flask
 from src.config import Config
+from src.services.job_manager import JobManager
 
 
 def create_app() -> Flask:
@@ -13,6 +14,9 @@ def create_app() -> Flask:
         static_folder="../static",
     )
     app.config.from_object(Config)
+
+    # Initialize job manager
+    app.job_manager = JobManager(app.config["REDIS_URL"])
 
     # Register blueprints
     from src.routes.auth import auth_bp

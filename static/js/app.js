@@ -72,7 +72,7 @@ function closePreview() {
     document.getElementById('preview-modal').classList.add('hidden');
 }
 
-// ---- Delete ----
+// ---- Single channel delete ----
 
 async function deleteChannel(channelId, dryRun) {
     const action = dryRun ? 'simulate deletion of' : 'permanently delete all your messages in';
@@ -100,7 +100,6 @@ async function deleteChannel(channelId, dryRun) {
             100
         );
 
-        // Update count display
         const countEl = document.getElementById(`count-${channelId}`);
         if (countEl && !dryRun) {
             countEl.textContent = '0 messages';
@@ -142,36 +141,6 @@ async function deleteSelected(dryRun) {
     setTimeout(hideStatus, 5000);
 }
 
-async function deleteAll(dryRun) {
-    if (!dryRun && !confirm('⚠️ This will DELETE ALL your messages in ALL DM conversations. This CANNOT be undone. Are you absolutely sure?')) {
-        return;
-    }
-
-    showStatus(
-        dryRun ? 'Simulating full cleanup...' : 'Deleting all DMs...',
-        'This may take a long time. Please keep this tab open.',
-        10
-    );
-
-    try {
-        const resp = await fetch('/api/delete-all', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dry_run: dryRun }),
-        });
-        const stats = await resp.json();
-
-        showStatus(
-            dryRun ? 'Simulation complete' : 'Full cleanup complete!',
-            `${stats.conversations_scanned} conversations scanned, ${stats.messages_deleted} messages ${dryRun ? 'would be' : ''} deleted`,
-            100
-        );
-
-    } catch (err) {
-        showStatus('Error', err.message, 0);
-    }
-}
-
 async function deleteChannelSilent(channelId, dryRun) {
     try {
         await fetch(`/api/delete/${channelId}`, {
@@ -181,6 +150,133 @@ async function deleteChannelSilent(channelId, dryRun) {
         });
     } catch (err) {
         console.error(`Failed to process ${channelId}:`, err);
+    }
+}
+
+// ---- Nuke (background job + SSE) ----
+
+let activeEventSource = null;
+
+async function startNuke() {
+    if (!confirm('This will DELETE ALL your messages in ALL conversations (DMs, group DMs, channels, threads). This CANNOT be undone.\n\nThe process runs in the background — you can close this page and come back later.')) {
+        return;
+    }
+
+    showNukeProgress({
+        status: 'starting',
+        conversations_total: 0,
+        conversations_done: 0,
+        messages_deleted: 0,
+        messages_failed: 0,
+        current_conversation: '',
+    });
+
+    try {
+        const resp = await fetch('/api/nuke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (resp.status === 409) {
+            const data = await resp.json();
+            // Already running, reconnect to existing job
+            connectSSE(data.job_id);
+            return;
+        }
+
+        const data = await resp.json();
+        connectSSE(data.job_id);
+
+    } catch (err) {
+        showStatus('Error', err.message, 0);
+    }
+}
+
+function connectSSE(jobId) {
+    if (activeEventSource) {
+        activeEventSource.close();
+    }
+
+    const nukePanel = document.getElementById('nuke-progress');
+    nukePanel.classList.remove('hidden');
+
+    activeEventSource = new EventSource(`/api/job/${jobId}/stream`);
+
+    activeEventSource.onmessage = (event) => {
+        const job = JSON.parse(event.data);
+        showNukeProgress(job);
+
+        if (job.status === 'completed' || job.status === 'failed') {
+            activeEventSource.close();
+            activeEventSource = null;
+        }
+    };
+
+    activeEventSource.onerror = () => {
+        // Reconnect after a short delay
+        activeEventSource.close();
+        activeEventSource = null;
+        setTimeout(() => {
+            fetch(`/api/job/${jobId}`)
+                .then(r => r.json())
+                .then(job => {
+                    if (job.status === 'running' || job.status === 'pending') {
+                        connectSSE(jobId);
+                    } else {
+                        showNukeProgress(job);
+                    }
+                })
+                .catch(() => {});
+        }, 3000);
+    };
+}
+
+function showNukeProgress(job) {
+    const panel = document.getElementById('nuke-progress');
+    const statusEl = document.getElementById('nuke-status');
+    const convEl = document.getElementById('nuke-conversations');
+    const msgsEl = document.getElementById('nuke-messages');
+    const currentEl = document.getElementById('nuke-current');
+    const progressEl = document.getElementById('nuke-progress-fill');
+    const failedEl = document.getElementById('nuke-failed');
+
+    panel.classList.remove('hidden');
+
+    // Status text
+    const statusMap = {
+        'pending': 'Starting...',
+        'starting': 'Starting...',
+        'running': 'Deleting messages...',
+        'completed': 'All done!',
+        'failed': 'Failed',
+    };
+    statusEl.textContent = statusMap[job.status] || job.status;
+    statusEl.className = 'nuke-status ' + (job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : 'running');
+
+    // Progress
+    const total = job.conversations_total || 1;
+    const pct = Math.round((job.conversations_done / total) * 100);
+    progressEl.style.width = pct + '%';
+
+    convEl.textContent = `${job.conversations_done} / ${job.conversations_total} conversations`;
+    msgsEl.textContent = `${job.messages_deleted} messages deleted`;
+
+    if (job.messages_failed > 0) {
+        failedEl.textContent = `${job.messages_failed} failed`;
+        failedEl.classList.remove('hidden');
+    }
+
+    if (job.current_conversation && job.status === 'running') {
+        currentEl.textContent = `Currently: ${job.current_conversation}`;
+        currentEl.classList.remove('hidden');
+    } else {
+        currentEl.classList.add('hidden');
+    }
+
+    // Hide nuke button when running
+    const nukeBtn = document.getElementById('btn-nuke');
+    if (nukeBtn) {
+        nukeBtn.style.display = (job.status === 'running' || job.status === 'pending') ? 'none' : '';
     }
 }
 
@@ -210,4 +306,12 @@ function escapeHtml(text) {
 }
 
 // ---- Init ----
-document.addEventListener('DOMContentLoaded', loadCounts);
+document.addEventListener('DOMContentLoaded', () => {
+    loadCounts();
+
+    // Reconnect to active job if one exists
+    const activeJobId = document.body.dataset.activeJobId;
+    if (activeJobId) {
+        connectSSE(activeJobId);
+    }
+});
