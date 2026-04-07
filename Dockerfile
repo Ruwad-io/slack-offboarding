@@ -3,7 +3,7 @@ FROM python:3.12-slim AS base
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir .
 
 # Production image
