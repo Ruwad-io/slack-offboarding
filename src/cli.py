@@ -123,6 +123,9 @@ def login():
             "   [cyan]im:history, im:read, chat:write, users:read[/cyan]\n"
             "   [cyan]mpim:history, mpim:read, groups:history, groups:read[/cyan]\n"
             "   [cyan]channels:history, channels:read[/cyan]\n"
+            "\n"
+            "   [dim]Optional (Business+/Enterprise, deletes others' DMs too):[/dim]\n"
+            "   [cyan]admin.conversations:write[/cyan]\n"
             "5. Install to Workspace\n"
             "6. Copy the [bold]User OAuth Token[/bold] (starts with xoxp-)",
             title="[bold #6366F1]Slack App Setup[/bold #6366F1]",
