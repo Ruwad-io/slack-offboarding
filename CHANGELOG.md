@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.7.0...v1.8.0) (2026-04-07)
+
+
+### Features
+
+* stream message counts via SSE instead of blocking request ([f8ce8db](https://github.com/Ruwad-io/slack-offboarding/commit/f8ce8dbd6599ba06d1eca9a6367d77ac35dd048e))
+
 # [1.7.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.6.1...v1.7.0) (2026-04-07)
 
 
