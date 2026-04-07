@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.6.1...v1.7.0) (2026-04-07)
+
+
+### Features
+
+* readable group DM names and Sentry integration ([79f8907](https://github.com/Ruwad-io/slack-offboarding/commit/79f890746490818ab371aaf06fa078e36f850a3a))
+
 ## [1.6.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.6.0...v1.6.1) (2026-04-07)
 
 
