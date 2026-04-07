@@ -5,6 +5,7 @@ Handles all Slack API interactions for message deletion and offboarding tasks.
 
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -44,6 +45,8 @@ class SlackCleaner:
 
     # Slack API rate limit: ~50 requests per minute for chat.delete
     DELETE_DELAY = 1.2  # seconds between deletions
+    # Max concurrent workers for read operations (Tier 3 APIs allow ~50 req/min)
+    MAX_WORKERS = 4
 
     def __init__(self, token: str):
         self.client = WebClient(token=token)
@@ -53,17 +56,32 @@ class SlackCleaner:
 
     def _api_call_with_retry(self, api_method, **kwargs):
         """Call a Slack API method with automatic rate-limit retry."""
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 return api_method(**kwargs)
             except SlackApiError as e:
                 if e.response.get("error") == "ratelimited":
-                    retry_after = int(e.response.headers.get("Retry-After", 10))
-                    logger.warning(f"Rate limited, sleeping {retry_after}s (attempt {attempt + 1})")
-                    time.sleep(retry_after)
+                    retry_after = int(e.response.headers.get("Retry-After", 5))
+                    delay = retry_after * (1.5 ** attempt)
+                    logger.warning(f"Rate limited, sleeping {delay:.0f}s (attempt {attempt + 1})")
+                    time.sleep(delay)
                 else:
                     raise
-        raise SlackApiError("Rate limited after 3 retries", e.response)
+        raise SlackApiError("Rate limited after 5 retries", e.response)
+
+    def _paginate(self, api_method, result_key, **kwargs):
+        """Generic paginated API call. Returns all items across pages."""
+        items = []
+        cursor = None
+        while True:
+            if cursor:
+                kwargs["cursor"] = cursor
+            resp = self._api_call_with_retry(api_method, **kwargs)
+            items.extend(resp[result_key])
+            cursor = resp.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+        return items
 
     @property
     def user_id(self) -> str:
@@ -82,52 +100,38 @@ class SlackCleaner:
         self._user_id = resp["user_id"]
         self._user_name = resp["user"]
 
+    def _prefetch_users(self):
+        """Bulk-fetch all workspace users into cache (1-2 API calls instead of N)."""
+        if self._user_cache:
+            return
+        users = self._paginate(self.client.users_list, "members", limit=200)
+        for u in users:
+            name = u.get("real_name") or u.get("name") or u["id"]
+            self._user_cache[u["id"]] = name
+
     # ------------------------------------------------------------------
     # Conversations
     # ------------------------------------------------------------------
 
     def list_dm_conversations(self) -> list[dict]:
         """List all 1-to-1 DM conversations with user info."""
-        channels = []
-        cursor = None
-        while True:
-            kwargs = {"types": "im", "limit": 200}
-            if cursor:
-                kwargs["cursor"] = cursor
-            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
-            channels.extend(resp["channels"])
-            cursor = resp.get("response_metadata", {}).get("next_cursor")
-            if not cursor:
-                break
+        self._prefetch_users()
+        channels = self._paginate(self.client.conversations_list, "channels", types="im", limit=200)
 
-        # Enrich with user names
-        enriched = []
-        for ch in channels:
-            other_user_id = ch.get("user", "")
-            name = self._get_user_name(other_user_id)
-            enriched.append(
-                {
-                    "id": ch["id"],
-                    "user_id": other_user_id,
-                    "user_name": name,
-                }
-            )
-        return enriched
+        return [
+            {
+                "id": ch["id"],
+                "user_id": ch.get("user", ""),
+                "user_name": self._get_user_name(ch.get("user", "")),
+            }
+            for ch in channels
+        ]
 
     def list_group_dms(self) -> list[dict]:
         """List all multi-party DM (group DM) conversations."""
-        channels = []
-        cursor = None
-        while True:
-            kwargs = {"types": "mpim", "limit": 200}
-            if cursor:
-                kwargs["cursor"] = cursor
-            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
-            channels.extend(resp["channels"])
-            cursor = resp.get("response_metadata", {}).get("next_cursor")
-            if not cursor:
-                break
-
+        channels = self._paginate(
+            self.client.conversations_list, "channels", types="mpim", limit=200
+        )
         return [
             {
                 "id": ch["id"],
@@ -139,18 +143,12 @@ class SlackCleaner:
 
     def list_channels(self) -> list[dict]:
         """List public/private channels the user is a member of."""
-        channels = []
-        cursor = None
-        while True:
-            kwargs = {"types": "public_channel,private_channel", "limit": 200}
-            if cursor:
-                kwargs["cursor"] = cursor
-            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
-            channels.extend(resp["channels"])
-            cursor = resp.get("response_metadata", {}).get("next_cursor")
-            if not cursor:
-                break
-
+        channels = self._paginate(
+            self.client.conversations_list,
+            "channels",
+            types="public_channel,private_channel",
+            limit=200,
+        )
         return [
             {
                 "id": ch["id"],
@@ -168,23 +166,41 @@ class SlackCleaner:
 
     def get_my_messages(self, channel_id: str) -> list[dict]:
         """Get all messages sent by the current user in a conversation."""
-        all_messages = []
-        cursor = None
-        while True:
-            kwargs = {"channel": channel_id, "limit": 200}
-            if cursor:
-                kwargs["cursor"] = cursor
-            resp = self._api_call_with_retry(self.client.conversations_history, **kwargs)
-            my_msgs = [m for m in resp["messages"] if m.get("user") == self.user_id]
-            all_messages.extend(my_msgs)
-            cursor = resp.get("response_metadata", {}).get("next_cursor")
-            if not cursor:
-                break
-        return all_messages
+        all_msgs = self._paginate(
+            self.client.conversations_history, "messages", channel=channel_id, limit=200
+        )
+        return [m for m in all_msgs if m.get("user") == self.user_id]
 
     def count_my_messages(self, channel_id: str) -> int:
-        """Count messages by current user in a conversation (without fetching all)."""
+        """Count messages by current user in a conversation."""
         return len(self.get_my_messages(channel_id))
+
+    def count_my_messages_batch(
+        self, channel_ids: list[str], on_each: callable = None
+    ) -> dict[str, int]:
+        """Count messages in multiple conversations concurrently.
+
+        Args:
+            channel_ids: List of channel IDs to count.
+            on_each: Optional callback(channel_id, count) after each completes.
+
+        Returns:
+            Dict mapping channel_id -> message count.
+        """
+        results = {}
+
+        def _count(cid):
+            return cid, self.count_my_messages(cid)
+
+        with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as pool:
+            futures = {pool.submit(_count, cid): cid for cid in channel_ids}
+            for future in as_completed(futures):
+                cid, count = future.result()
+                results[cid] = count
+                if on_each:
+                    on_each(cid, count)
+
+        return results
 
     # ------------------------------------------------------------------
     # Deletion

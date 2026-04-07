@@ -65,12 +65,8 @@ def api_conversations():
     """List all DM conversations with message counts."""
     cleaner = SlackCleaner(session["slack_token"])
     dms = cleaner.list_dm_conversations()
-
-    results = []
-    for dm in dms:
-        count = cleaner.count_my_messages(dm["id"])
-        results.append({**dm, "my_message_count": count})
-
+    counts = cleaner.count_my_messages_batch([dm["id"] for dm in dms])
+    results = [{**dm, "my_message_count": counts.get(dm["id"], 0)} for dm in dms]
     return jsonify(results)
 
 

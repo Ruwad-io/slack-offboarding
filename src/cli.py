@@ -193,14 +193,18 @@ def scan():
     ) as progress:
         task = progress.add_task("Counting", total=len(dms))
 
-        for i, dm in enumerate(dms, 1):
-            count = cleaner.count_my_messages(dm["id"])
-            total_messages += count
-
-            status = "[green]clean[/green]" if count == 0 else f"[yellow]{count} msgs[/yellow]"
-            table.add_row(str(i), dm["user_name"], str(count), status)
-
+        def on_counted(cid, count):
             progress.update(task, advance=1)
+
+        counts = cleaner.count_my_messages_batch(
+            [dm["id"] for dm in dms], on_each=on_counted
+        )
+
+    for i, dm in enumerate(dms, 1):
+        count = counts.get(dm["id"], 0)
+        total_messages += count
+        status = "[green]clean[/green]" if count == 0 else f"[yellow]{count} msgs[/yellow]"
+        table.add_row(str(i), dm["user_name"], str(count), status)
 
     console.print()
     console.print(table)
@@ -243,8 +247,7 @@ def clean(clean_all: bool, dry_run: bool):
         console.print("[yellow]No DM conversations found.[/yellow]")
         return
 
-    # Count messages
-    dm_counts = []
+    # Count messages (concurrent)
     with Progress(
         SpinnerColumn(style="#6366F1"),
         TextColumn("[bold #6366F1]Counting messages..."),
@@ -253,10 +256,15 @@ def clean(clean_all: bool, dry_run: bool):
         console=console,
     ) as progress:
         task = progress.add_task("Counting", total=len(dms))
-        for dm in dms:
-            count = cleaner.count_my_messages(dm["id"])
-            dm_counts.append({**dm, "count": count})
+
+        def on_counted(cid, count):
             progress.update(task, advance=1)
+
+        counts = cleaner.count_my_messages_batch(
+            [dm["id"] for dm in dms], on_each=on_counted
+        )
+
+    dm_counts = [{**dm, "count": counts.get(dm["id"], 0)} for dm in dms]
 
     # Filter to conversations with messages
     with_messages = [d for d in dm_counts if d["count"] > 0]
