@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.0...v1.3.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* reduce delete delay from 1.2s to 0.5s for faster cleanup ([cf8dcb5](https://github.com/Ruwad-io/slack-offboarding/commit/cf8dcb5715df59a33c711679b6eb5768b90f0b53))
+
 # [1.3.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.2.0...v1.3.0) (2026-04-07)
 
 
