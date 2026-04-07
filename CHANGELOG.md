@@ -1,3 +1,23 @@
+# [2.0.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.8.0...v2.0.0) (2026-04-07)
+
+
+* feat!: migrate from Flask to FastAPI ([b65dc99](https://github.com/Ruwad-io/slack-offboarding/commit/b65dc99bcaa245f907376c5251bb828d579e3e61))
+
+
+### BREAKING CHANGES
+
+* web framework changed from Flask to FastAPI
+
+- Replace Flask with FastAPI + Starlette
+- Replace gunicorn with uvicorn
+- Use Starlette SessionMiddleware for cookie sessions
+- Use StreamingResponse for SSE endpoints
+- Use APIRouter instead of Blueprints
+- Use Jinja2Templates from Starlette
+- Sync route handlers (FastAPI runs in threadpool)
+- Add pydantic for request body validation
+- Update tests to use FastAPI TestClient
+
 # [1.8.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.7.0...v1.8.0) (2026-04-07)
 
 
