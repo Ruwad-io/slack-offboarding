@@ -1,17 +1,22 @@
 """
-Slack OffBoarding — Flask application factory.
+Slack OffBoarding — FastAPI application factory.
 """
 
+from contextlib import asynccontextmanager
+
 import sentry_sdk
-from flask import Flask
+from fastapi import FastAPI, Request
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import RedirectResponse
+from starlette.staticfiles import StaticFiles
+
 from src.config import Config
 from src.services.job_manager import JobManager
 
 
-def create_app() -> Flask:
+def create_app() -> FastAPI:
     config = Config()
 
-    # Initialize Sentry if DSN is set
     if config.SENTRY_DSN:
         sentry_sdk.init(
             dsn=config.SENTRY_DSN,
@@ -19,21 +24,26 @@ def create_app() -> Flask:
             profiles_sample_rate=0.1,
         )
 
-    app = Flask(
-        __name__,
-        template_folder="../templates",
-        static_folder="../static",
-    )
-    app.config.from_object(config)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.job_manager = JobManager(config.REDIS_URL)
+        app.state.config = config
+        yield
 
-    # Initialize job manager
-    app.job_manager = JobManager(app.config["REDIS_URL"])
+    app = FastAPI(title="OffBoarding", lifespan=lifespan)
 
-    # Register blueprints
-    from src.routes.auth import auth_bp
-    from src.routes.main import main_bp
+    app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(main_bp)
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+    from src.routes.auth import auth_router
+    from src.routes.main import main_router, AuthRedirect
+
+    app.include_router(auth_router)
+    app.include_router(main_router)
+
+    @app.exception_handler(AuthRedirect)
+    async def auth_redirect_handler(request: Request, exc: AuthRedirect):
+        return RedirectResponse(url="/", status_code=302)
 
     return app

@@ -22,14 +22,17 @@ classifiers = [
 ]
 
 dependencies = [
-    "flask>=3.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "itsdangerous>=2.1",
+    "python-multipart>=0.0.9",
     "slack-sdk>=3.27",
     "python-dotenv>=1.0",
-    "gunicorn>=22.0",
     "redis>=5.0",
     "rich>=13.0",
     "click>=8.1",
-    "sentry-sdk[flask]>=2.0",
+    "sentry-sdk[fastapi]>=2.0",
 ]
 
 [project.scripts]
@@ -38,6 +41,7 @@ offboarding = "src.cli:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "niquests>=3.0",
     "ruff>=0.4",
     "black>=24.0",
 ]

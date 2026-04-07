@@ -14,12 +14,11 @@ RUN addgroup --system --gid 1001 appuser && \
     adduser --system --uid 1001 --home /home/appuser appuser
 
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=deps /usr/local/bin/gunicorn /usr/local/bin/gunicorn
+COPY --from=deps /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 COPY . .
 
 USER appuser
 
 ENV PORT=8000
 
-# Use gthread worker for SSE streaming support
-CMD gunicorn "src.app:create_app()" --bind "0.0.0.0:${PORT}" --workers 2 --threads 4 --timeout 0 --worker-class gthread
+CMD uvicorn "src.app:create_app" --factory --host "0.0.0.0" --port "${PORT}" --workers 2 --timeout-keep-alive 0
