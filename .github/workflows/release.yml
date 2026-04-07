@@ -17,6 +17,9 @@ jobs:
       issues: write
       pull-requests: write
       id-token: write
+    outputs:
+      new-release: ${{ steps.semantic.outputs.new_release_published }}
+      version: ${{ steps.semantic.outputs.new_release_version }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -28,10 +31,41 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install semantic-release
-        run: npm install -g semantic-release @semantic-release/exec @semantic-release/git @semantic-release/changelog
-
       - name: Run semantic-release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: 24
+          extra_plugins: |
+            @semantic-release/exec
+            @semantic-release/git
+            @semantic-release/changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+
+  publish:
+    name: Publish to PyPI
+    needs: release
+    if: needs.release.outputs.new-release == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
