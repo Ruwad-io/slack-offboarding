@@ -29,6 +29,7 @@ dependencies = [
     "redis>=5.0",
     "rich>=13.0",
     "click>=8.1",
+    "sentry-sdk[flask]>=2.0",
 ]
 
 [project.scripts]

@@ -11,6 +11,7 @@ class Config:
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     APP_URL = os.environ.get("APP_URL", "http://localhost:5000")
+    SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 
     SLACK_USER_SCOPES = [
         "channels:history",

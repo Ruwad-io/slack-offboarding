@@ -148,18 +148,33 @@ class SlackCleaner:
 
     def list_group_dms(self) -> list[dict]:
         """List all multi-party DM (group DM) conversations."""
+        self._prefetch_users()
         channels = self._paginate(
             self.client.conversations_list, "channels", types="mpim", limit=200
         )
-        return [
-            {
+        result = []
+        for ch in channels:
+            # Build readable name from member list
+            members = ch.get("members", [])
+            if not members:
+                # Fallback: extract usernames from the mpdm name
+                raw = ch.get("name", "group-dm")
+                parts = raw.replace("mpdm-", "").replace("-1", "").split("--")
+                display = ", ".join(p for p in parts if p)
+            else:
+                names = [
+                    self._get_user_name(uid)
+                    for uid in members
+                    if uid != self.user_id
+                ]
+                display = ", ".join(names) if names else "Group DM"
+            result.append({
                 "id": ch["id"],
-                "user_name": ch.get("name", "group-dm"),
+                "user_name": display,
                 "purpose": ch.get("purpose", {}).get("value", ""),
                 "type": "group_dm",
-            }
-            for ch in channels
-        ]
+            })
+        return result
 
     def list_channels(self) -> list[dict]:
         """List public/private channels the user is a member of."""
