@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.1.1...v1.2.0) (2026-04-07)
+
+
+### Features
+
+* full wipe — threads, group DMs, and channels support ([17b6237](https://github.com/Ruwad-io/slack-offboarding/commit/17b62379c84c2116aa263c620498fadbf2419e01))
+
 ## [1.1.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.1.0...v1.1.1) (2026-04-07)
 
 
