@@ -5,6 +5,7 @@ Handles all Slack API interactions for message deletion and offboarding tasks.
 
 import time
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from slack_sdk import WebClient
@@ -43,8 +44,10 @@ class CleanupStats:
 class SlackCleaner:
     """Service to clean up a user's Slack messages."""
 
-    DELETE_DELAY = 0.5  # seconds between deletions (retry handles rate limits)
+    INITIAL_DELETE_DELAY = 0.3  # start aggressive
+    MAX_DELETE_DELAY = 2.0  # back off up to this
     MAX_WORKERS = 2
+    MAX_DELETE_WORKERS = 3  # start with 3 concurrent deletions
     READ_DELAY = 0.8  # seconds between read API calls
 
     def __init__(self, token: str):
@@ -276,7 +279,7 @@ class SlackCleaner:
         dry_run: bool = False,
         on_progress: callable = None,
     ) -> CleanupStats:
-        """Delete user's messages from a conversation (including thread replies)."""
+        """Delete user's messages with adaptive concurrency."""
         if messages is None:
             messages = self.get_my_messages(channel_id)
 
@@ -285,28 +288,56 @@ class SlackCleaner:
 
         stats = CleanupStats(conversations_scanned=1, messages_found=len(messages))
 
-        for msg in messages:
-            if dry_run:
+        if dry_run:
+            for msg in messages:
                 stats.messages_deleted += 1
                 if on_progress:
                     on_progress(stats)
-                continue
+            return stats
 
+        # Adaptive delay: starts fast, slows down on rate limits
+        delay = self.INITIAL_DELETE_DELAY
+        lock = threading.Lock()
+
+        def _delete_one(msg):
+            nonlocal delay
             try:
                 self._api_call_with_retry(self.client.chat_delete, channel=channel_id, ts=msg["ts"])
-                stats.messages_deleted += 1
-                time.sleep(self.DELETE_DELAY)
+                with lock:
+                    stats.messages_deleted += 1
+                    # Speed back up gradually after success
+                    delay = max(self.INITIAL_DELETE_DELAY, delay * 0.95)
             except SlackApiError as e:
                 error_code = e.response.get("error", "unknown")
                 if error_code == "message_not_found":
-                    stats.messages_deleted += 1  # already gone
+                    with lock:
+                        stats.messages_deleted += 1
+                elif error_code == "ratelimited":
+                    with lock:
+                        delay = min(self.MAX_DELETE_DELAY, delay * 2)
+                    retry_after = int(e.response.headers.get("Retry-After", 5))
+                    time.sleep(retry_after)
+                    # Retry once more
+                    try:
+                        self._api_call_with_retry(
+                            self.client.chat_delete, channel=channel_id, ts=msg["ts"]
+                        )
+                        with lock:
+                            stats.messages_deleted += 1
+                    except SlackApiError:
+                        with lock:
+                            stats.messages_failed += 1
                 else:
-                    stats.messages_failed += 1
-                    stats.errors.append(f"{error_code}: {msg.get('text', '')[:50]}")
-                    logger.error(f"Delete failed ({error_code}): {msg.get('text', '')[:50]}")
+                    with lock:
+                        stats.messages_failed += 1
+                        stats.errors.append(f"{error_code}: {msg.get('text', '')[:50]}")
+            with lock:
+                if on_progress:
+                    on_progress(stats)
+            time.sleep(delay)
 
-            if on_progress:
-                on_progress(stats)
+        with ThreadPoolExecutor(max_workers=self.MAX_DELETE_WORKERS) as pool:
+            list(pool.map(_delete_one, messages))
 
         return stats
 
