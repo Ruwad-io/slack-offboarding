@@ -45,8 +45,9 @@ class SlackCleaner:
 
     # Slack API rate limit: ~50 requests per minute for chat.delete
     DELETE_DELAY = 1.2  # seconds between deletions
-    # Max concurrent workers for read operations (Tier 3 APIs allow ~50 req/min)
-    MAX_WORKERS = 4
+    # Tier 3 APIs allow ~50 req/min — 2 workers + delay keeps us under limit
+    MAX_WORKERS = 2
+    READ_DELAY = 0.8  # seconds between read API calls
 
     def __init__(self, token: str):
         self.client = WebClient(token=token)
@@ -63,7 +64,7 @@ class SlackCleaner:
                 if e.response.get("error") == "ratelimited":
                     retry_after = int(e.response.headers.get("Retry-After", 5))
                     delay = retry_after * (1.5 ** attempt)
-                    logger.warning(f"Rate limited, sleeping {delay:.0f}s (attempt {attempt + 1})")
+                    logger.debug(f"Rate limited, sleeping {delay:.0f}s (attempt {attempt + 1})")
                     time.sleep(delay)
                 else:
                     raise
@@ -73,14 +74,18 @@ class SlackCleaner:
         """Generic paginated API call. Returns all items across pages."""
         items = []
         cursor = None
+        first = True
         while True:
             if cursor:
                 kwargs["cursor"] = cursor
+            if not first:
+                time.sleep(self.READ_DELAY)
             resp = self._api_call_with_retry(api_method, **kwargs)
             items.extend(resp[result_key])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
                 break
+            first = False
         return items
 
     @property
@@ -166,10 +171,21 @@ class SlackCleaner:
 
     def get_my_messages(self, channel_id: str) -> list[dict]:
         """Get all messages sent by the current user in a conversation."""
-        all_msgs = self._paginate(
-            self.client.conversations_history, "messages", channel=channel_id, limit=200
-        )
-        return [m for m in all_msgs if m.get("user") == self.user_id]
+        all_messages = []
+        cursor = None
+        while True:
+            kwargs = {"channel": channel_id, "limit": 200}
+            if cursor:
+                kwargs["cursor"] = cursor
+                time.sleep(self.READ_DELAY)
+            resp = self._api_call_with_retry(self.client.conversations_history, **kwargs)
+            my_msgs = [m for m in resp["messages"] if m.get("user") == self.user_id]
+            all_messages.extend(my_msgs)
+            # Stop early if no more pages or no user messages in this batch
+            cursor = resp.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+        return all_messages
 
     def count_my_messages(self, channel_id: str) -> int:
         """Count messages by current user in a conversation."""
