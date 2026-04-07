@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.2...v1.4.0) (2026-04-07)
+
+
+### Features
+
+* adaptive concurrent deletion — starts fast, backs off on rate limits ([cd2d72c](https://github.com/Ruwad-io/slack-offboarding/commit/cd2d72cb02ae496dd4dc18684a0bc5d117bfa423))
+
 ## [1.3.2](https://github.com/Ruwad-io/slack-offboarding/compare/v1.3.1...v1.3.2) (2026-04-07)
 
 
