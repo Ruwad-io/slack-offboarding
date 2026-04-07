@@ -49,6 +49,21 @@ class SlackCleaner:
         self.client = WebClient(token=token)
         self._user_id = None
         self._user_name = None
+        self._user_cache = {}
+
+    def _api_call_with_retry(self, api_method, **kwargs):
+        """Call a Slack API method with automatic rate-limit retry."""
+        for attempt in range(3):
+            try:
+                return api_method(**kwargs)
+            except SlackApiError as e:
+                if e.response.get("error") == "ratelimited":
+                    retry_after = int(e.response.headers.get("Retry-After", 10))
+                    logger.warning(f"Rate limited, sleeping {retry_after}s (attempt {attempt + 1})")
+                    time.sleep(retry_after)
+                else:
+                    raise
+        raise SlackApiError("Rate limited after 3 retries", e.response)
 
     @property
     def user_id(self) -> str:
@@ -63,7 +78,7 @@ class SlackCleaner:
         return self._user_name
 
     def _fetch_identity(self):
-        resp = self.client.auth_test()
+        resp = self._api_call_with_retry(self.client.auth_test)
         self._user_id = resp["user_id"]
         self._user_name = resp["user"]
 
@@ -79,7 +94,7 @@ class SlackCleaner:
             kwargs = {"types": "im", "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
-            resp = self.client.conversations_list(**kwargs)
+            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
             channels.extend(resp["channels"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
@@ -107,7 +122,7 @@ class SlackCleaner:
             kwargs = {"types": "mpim", "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
-            resp = self.client.conversations_list(**kwargs)
+            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
             channels.extend(resp["channels"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
@@ -130,7 +145,7 @@ class SlackCleaner:
             kwargs = {"types": "public_channel,private_channel", "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
-            resp = self.client.conversations_list(**kwargs)
+            resp = self._api_call_with_retry(self.client.conversations_list, **kwargs)
             channels.extend(resp["channels"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
@@ -159,7 +174,7 @@ class SlackCleaner:
             kwargs = {"channel": channel_id, "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
-            resp = self.client.conversations_history(**kwargs)
+            resp = self._api_call_with_retry(self.client.conversations_history, **kwargs)
             my_msgs = [m for m in resp["messages"] if m.get("user") == self.user_id]
             all_messages.extend(my_msgs)
             cursor = resp.get("response_metadata", {}).get("next_cursor")
@@ -204,23 +219,12 @@ class SlackCleaner:
                 continue
 
             try:
-                self.client.chat_delete(channel=channel_id, ts=msg["ts"])
+                self._api_call_with_retry(self.client.chat_delete, channel=channel_id, ts=msg["ts"])
                 stats.messages_deleted += 1
                 time.sleep(self.DELETE_DELAY)
             except SlackApiError as e:
                 error_code = e.response.get("error", "unknown")
-                if error_code == "ratelimited":
-                    retry_after = int(e.response.headers.get("Retry-After", 10))
-                    logger.warning(f"Rate limited, sleeping {retry_after}s")
-                    time.sleep(retry_after)
-                    # Retry once
-                    try:
-                        self.client.chat_delete(channel=channel_id, ts=msg["ts"])
-                        stats.messages_deleted += 1
-                    except SlackApiError:
-                        stats.messages_failed += 1
-                        stats.errors.append(f"Failed after retry: {error_code}")
-                elif error_code == "message_not_found":
+                if error_code == "message_not_found":
                     stats.messages_deleted += 1  # already gone
                 else:
                     stats.messages_failed += 1
@@ -262,9 +266,13 @@ class SlackCleaner:
     # ------------------------------------------------------------------
 
     def _get_user_name(self, user_id: str) -> str:
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
         try:
-            resp = self.client.users_info(user=user_id)
+            resp = self._api_call_with_retry(self.client.users_info, user=user_id)
             user = resp["user"]
-            return user.get("real_name") or user.get("name") or user_id
+            name = user.get("real_name") or user.get("name") or user_id
         except SlackApiError:
-            return user_id
+            name = user_id
+        self._user_cache[user_id] = name
+        return name
