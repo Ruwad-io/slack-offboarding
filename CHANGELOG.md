@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.2.0...v1.3.0) (2026-04-07)
+
+
+### Features
+
+* auto-detect admin scope to delete others' messages in DMs ([e093ab0](https://github.com/Ruwad-io/slack-offboarding/commit/e093ab0c52bd4087524c6c7220580bac2997065b))
+
 # [1.2.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.1.1...v1.2.0) (2026-04-07)
 
 
