@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.4.1...v1.5.0) (2026-04-07)
+
+
+### Features
+
+* background job system with SSE for real-time progress ([94da48d](https://github.com/Ruwad-io/slack-offboarding/commit/94da48d20c7061f8a3809a86322c7a7ed52c93fa))
+
 ## [1.4.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.4.0...v1.4.1) (2026-04-07)
 
 
