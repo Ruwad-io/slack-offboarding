@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/Ruwad-io/slack-offboarding/compare/v1.6.0...v1.6.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* generate PNG favicons, ICO, and apple-touch-icon from SVG ([fb6b192](https://github.com/Ruwad-io/slack-offboarding/commit/fb6b192385c1ffc60dac5dac4f134968ddcff24f))
+
 # [1.6.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.5.2...v1.6.0) (2026-04-07)
 
 
