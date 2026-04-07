@@ -43,9 +43,7 @@ class CleanupStats:
 class SlackCleaner:
     """Service to clean up a user's Slack messages."""
 
-    # Slack API rate limit: ~50 requests per minute for chat.delete
     DELETE_DELAY = 1.2  # seconds between deletions
-    # Tier 3 APIs allow ~50 req/min — 2 workers + delay keeps us under limit
     MAX_WORKERS = 2
     READ_DELAY = 0.8  # seconds between read API calls
 
@@ -106,7 +104,7 @@ class SlackCleaner:
         self._user_name = resp["user"]
 
     def _prefetch_users(self):
-        """Bulk-fetch all workspace users into cache (1-2 API calls instead of N)."""
+        """Bulk-fetch all workspace users into cache."""
         if self._user_cache:
             return
         users = self._paginate(self.client.users_list, "members", limit=200)
@@ -122,12 +120,12 @@ class SlackCleaner:
         """List all 1-to-1 DM conversations with user info."""
         self._prefetch_users()
         channels = self._paginate(self.client.conversations_list, "channels", types="im", limit=200)
-
         return [
             {
                 "id": ch["id"],
                 "user_id": ch.get("user", ""),
                 "user_name": self._get_user_name(ch.get("user", "")),
+                "type": "dm",
             }
             for ch in channels
         ]
@@ -140,8 +138,9 @@ class SlackCleaner:
         return [
             {
                 "id": ch["id"],
-                "name": ch.get("name", "group-dm"),
+                "user_name": ch.get("name", "group-dm"),
                 "purpose": ch.get("purpose", {}).get("value", ""),
+                "type": "group_dm",
             }
             for ch in channels
         ]
@@ -157,21 +156,32 @@ class SlackCleaner:
         return [
             {
                 "id": ch["id"],
-                "name": ch.get("name", ""),
+                "user_name": f"#{ch.get('name', '')}",
                 "is_private": ch.get("is_private", False),
                 "num_members": ch.get("num_members", 0),
+                "type": "channel",
             }
             for ch in channels
             if ch.get("is_member", False)
         ]
 
+    def list_all_conversations(self) -> list[dict]:
+        """List ALL conversations: DMs + group DMs + channels."""
+        self._prefetch_users()
+        dms = self.list_dm_conversations()
+        group_dms = self.list_group_dms()
+        channels = self.list_channels()
+        return dms + group_dms + channels
+
     # ------------------------------------------------------------------
-    # Message retrieval
+    # Message retrieval (includes thread replies)
     # ------------------------------------------------------------------
 
-    def get_my_messages(self, channel_id: str) -> list[dict]:
-        """Get all messages sent by the current user in a conversation."""
+    def get_my_messages(self, channel_id: str, include_threads: bool = True) -> list[dict]:
+        """Get all messages sent by the current user, including thread replies."""
+        # 1. Get top-level messages
         all_messages = []
+        thread_parents = []
         cursor = None
         while True:
             kwargs = {"channel": channel_id, "limit": 200}
@@ -179,30 +189,47 @@ class SlackCleaner:
                 kwargs["cursor"] = cursor
                 time.sleep(self.READ_DELAY)
             resp = self._api_call_with_retry(self.client.conversations_history, **kwargs)
-            my_msgs = [m for m in resp["messages"] if m.get("user") == self.user_id]
-            all_messages.extend(my_msgs)
-            # Stop early if no more pages or no user messages in this batch
+            for m in resp["messages"]:
+                if m.get("user") == self.user_id:
+                    all_messages.append(m)
+                # Track threads that might contain our replies
+                if include_threads and m.get("reply_count", 0) > 0:
+                    thread_parents.append(m["ts"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
                 break
+
+        # 2. Fetch thread replies
+        if include_threads and thread_parents:
+            seen_ts = {m["ts"] for m in all_messages}
+            for parent_ts in thread_parents:
+                time.sleep(self.READ_DELAY)
+                try:
+                    replies = self._paginate(
+                        self.client.conversations_replies,
+                        "messages",
+                        channel=channel_id,
+                        ts=parent_ts,
+                        limit=200,
+                    )
+                    for r in replies:
+                        if r.get("user") == self.user_id and r["ts"] not in seen_ts:
+                            all_messages.append(r)
+                            seen_ts.add(r["ts"])
+                except SlackApiError as e:
+                    if e.response.get("error") != "thread_not_found":
+                        logger.debug(f"Thread fetch failed: {e.response.get('error')}")
+
         return all_messages
 
     def count_my_messages(self, channel_id: str) -> int:
-        """Count messages by current user in a conversation."""
+        """Count messages by current user in a conversation (including threads)."""
         return len(self.get_my_messages(channel_id))
 
     def count_my_messages_batch(
         self, channel_ids: list[str], on_each: callable = None
     ) -> dict[str, int]:
-        """Count messages in multiple conversations concurrently.
-
-        Args:
-            channel_ids: List of channel IDs to count.
-            on_each: Optional callback(channel_id, count) after each completes.
-
-        Returns:
-            Dict mapping channel_id -> message count.
-        """
+        """Count messages in multiple conversations concurrently."""
         results = {}
 
         def _count(cid):
@@ -229,17 +256,12 @@ class SlackCleaner:
         dry_run: bool = False,
         on_progress: callable = None,
     ) -> CleanupStats:
-        """
-        Delete user's messages from a conversation.
-
-        Args:
-            channel_id: Slack channel/DM ID
-            messages: Pre-fetched messages (if None, will fetch them)
-            dry_run: If True, simulate without deleting
-            on_progress: Callback(stats) called after each deletion
-        """
+        """Delete user's messages from a conversation (including thread replies)."""
         if messages is None:
             messages = self.get_my_messages(channel_id)
+
+        # Delete thread replies before parent messages (child first)
+        messages.sort(key=lambda m: (m.get("thread_ts", m["ts"]), m["ts"]), reverse=True)
 
         stats = CleanupStats(conversations_scanned=1, messages_found=len(messages))
 

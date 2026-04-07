@@ -122,6 +122,7 @@ def login():
             "4. Add these User Token Scopes:\n"
             "   [cyan]im:history, im:read, chat:write, users:read[/cyan]\n"
             "   [cyan]mpim:history, mpim:read, groups:history, groups:read[/cyan]\n"
+            "   [cyan]channels:history, channels:read[/cyan]\n"
             "5. Install to Workspace\n"
             "6. Copy the [bold]User OAuth Token[/bold] (starts with xoxp-)",
             title="[bold #6366F1]Slack App Setup[/bold #6366F1]",
@@ -388,7 +389,7 @@ def clean(clean_all: bool, dry_run: bool):
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Simulate without deleting.")
 def nuke(dry_run: bool):
-    """Full wipe — delete ALL your messages in ALL DMs."""
+    """Full wipe — delete ALL your messages EVERYWHERE (DMs, group DMs, channels, threads)."""
     print_banner()
 
     cleaner = get_cleaner()
@@ -401,7 +402,11 @@ def nuke(dry_run: bool):
         Panel(
             "[bold red]NUCLEAR OPTION[/bold red]\n\n"
             "This will delete [bold]every single message[/bold] you've sent\n"
-            "across [bold]all DM conversations[/bold].\n\n"
+            "across [bold]ALL conversations[/bold]:\n\n"
+            "  [red]•[/red] Direct messages (DMs)\n"
+            "  [red]•[/red] Group DMs\n"
+            "  [red]•[/red] Public & private channels\n"
+            "  [red]•[/red] Thread replies\n\n"
             "[dim]There is no undo.[/dim]",
             title="[bold red]WARNING[/bold red]",
             border_style="red",
@@ -421,7 +426,17 @@ def nuke(dry_run: bool):
     console.print()
 
     with console.status("[bold #6366F1]Scanning all conversations...", spinner="dots"):
-        dms = cleaner.list_dm_conversations()
+        conversations = cleaner.list_all_conversations()
+
+    dm_count = sum(1 for c in conversations if c["type"] == "dm")
+    group_count = sum(1 for c in conversations if c["type"] == "group_dm")
+    chan_count = sum(1 for c in conversations if c["type"] == "channel")
+
+    console.print(
+        f"  Found [bold]{dm_count}[/bold] DMs, "
+        f"[bold]{group_count}[/bold] group DMs, "
+        f"[bold]{chan_count}[/bold] channels\n"
+    )
 
     total_deleted = 0
     total_failed = 0
@@ -435,15 +450,15 @@ def nuke(dry_run: bool):
         console=console,
     ) as progress:
         overall = progress.add_task(
-            f"[#6366F1]Cleaning {len(dms)} conversations", total=len(dms)
+            f"[#6366F1]Cleaning {len(conversations)} conversations", total=len(conversations)
         )
 
-        for dm in dms:
-            messages = cleaner.get_my_messages(dm["id"])
+        for conv in conversations:
+            messages = cleaner.get_my_messages(conv["id"])
 
             if messages:
                 conv_task = progress.add_task(
-                    f"  {dm['user_name']}", total=len(messages)
+                    f"  {conv['user_name']}", total=len(messages)
                 )
 
                 def on_progress(stats, _task=conv_task):
@@ -452,7 +467,7 @@ def nuke(dry_run: bool):
                     )
 
                 stats = cleaner.delete_messages(
-                    dm["id"],
+                    conv["id"],
                     messages=messages,
                     dry_run=dry_run,
                     on_progress=on_progress,
@@ -470,7 +485,8 @@ def nuke(dry_run: bool):
         Panel(
             f"[bold green]{total_deleted}[/bold green] messages {action}\n"
             + (f"[bold red]{total_failed}[/bold red] failed\n" if total_failed else "")
-            + f"[dim]{len(dms)} conversations scanned[/dim]",
+            + f"[dim]{len(conversations)} conversations scanned "
+            + f"(DMs + group DMs + channels + threads)[/dim]",
             title="[bold]Mission Complete[/bold]",
             border_style="#10B981",
             padding=(1, 2),
