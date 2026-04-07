@@ -19,6 +19,27 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
+@main_bp.route("/robots.txt")
+def robots():
+    return Response(
+        "User-agent: *\nAllow: /\nSitemap: https://slack-offboarding.ruwad.io/sitemap.xml\n",
+        mimetype="text/plain",
+    )
+
+
+@main_bp.route("/sitemap.xml")
+def sitemap():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://slack-offboarding.ruwad.io</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>"""
+    return Response(xml, mimetype="application/xml")
+
+
 def require_auth(f):
     """Decorator to require Slack authentication."""
     from functools import wraps
