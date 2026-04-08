@@ -13,6 +13,9 @@ from slack_sdk.errors import SlackApiError
 
 logger = logging.getLogger(__name__)
 
+# Pagination page size for all Slack API calls
+PAGE_LIMIT = 200
+
 
 @dataclass
 class CleanupStats:
@@ -37,18 +40,18 @@ class CleanupStats:
             "messages_deleted": self.messages_deleted,
             "messages_failed": self.messages_failed,
             "progress_pct": self.progress_pct,
-            "errors": self.errors[-10:],  # last 10 errors
+            "errors": self.errors[-10:],
         }
 
 
 class SlackCleaner:
     """Service to clean up a user's Slack messages."""
 
-    INITIAL_DELETE_DELAY = 0.3  # start aggressive
-    MAX_DELETE_DELAY = 2.0  # back off up to this
+    INITIAL_DELETE_DELAY = 0.3
+    MAX_DELETE_DELAY = 2.0
     MAX_WORKERS = 2
-    MAX_DELETE_WORKERS = 3  # start with 3 concurrent deletions
-    READ_DELAY = 0.8  # seconds between read API calls
+    MAX_DELETE_WORKERS = 3
+    READ_DELAY = 0.8
 
     def __init__(self, token: str):
         self.client = WebClient(token=token)
@@ -115,7 +118,6 @@ class SlackCleaner:
         resp = self._api_call_with_retry(self.client.auth_test)
         self._user_id = resp["user_id"]
         self._user_name = resp["user"]
-        # Scopes come back in the response headers
         scope_header = resp.headers.get("x-oauth-scopes", "")
         self._scopes = {s.strip() for s in scope_header.split(",") if s.strip()}
 
@@ -123,7 +125,7 @@ class SlackCleaner:
         """Bulk-fetch all workspace users into cache."""
         if self._user_cache:
             return
-        users = self._paginate(self.client.users_list, "members", limit=200)
+        users = self._paginate(self.client.users_list, "members", limit=PAGE_LIMIT)
         for u in users:
             name = u.get("real_name") or u.get("name") or u["id"]
             self._user_cache[u["id"]] = name
@@ -135,7 +137,9 @@ class SlackCleaner:
     def list_dm_conversations(self) -> list[dict]:
         """List all 1-to-1 DM conversations with user info."""
         self._prefetch_users()
-        channels = self._paginate(self.client.conversations_list, "channels", types="im", limit=200)
+        channels = self._paginate(
+            self.client.conversations_list, "channels", types="im", limit=PAGE_LIMIT
+        )
         return [
             {
                 "id": ch["id"],
@@ -150,22 +154,18 @@ class SlackCleaner:
         """List all multi-party DM (group DM) conversations."""
         self._prefetch_users()
         channels = self._paginate(
-            self.client.conversations_list, "channels", types="mpim", limit=200
+            self.client.conversations_list, "channels", types="mpim", limit=PAGE_LIMIT
         )
         result = []
         for ch in channels:
-            # Build readable name from member list
             members = ch.get("members", [])
             if not members:
-                # Fallback: extract usernames from the mpdm name
                 raw = ch.get("name", "group-dm")
                 parts = raw.replace("mpdm-", "").replace("-1", "").split("--")
                 display = ", ".join(p for p in parts if p)
             else:
                 names = [
-                    self._get_user_name(uid)
-                    for uid in members
-                    if uid != self.user_id
+                    self._get_user_name(uid) for uid in members if uid != self.user_id
                 ]
                 display = ", ".join(names) if names else "Group DM"
             result.append({
@@ -182,7 +182,7 @@ class SlackCleaner:
             self.client.conversations_list,
             "channels",
             types="public_channel,private_channel",
-            limit=200,
+            limit=PAGE_LIMIT,
         )
         return [
             {
@@ -199,10 +199,7 @@ class SlackCleaner:
     def list_all_conversations(self) -> list[dict]:
         """List ALL conversations: DMs + group DMs + channels."""
         self._prefetch_users()
-        dms = self.list_dm_conversations()
-        group_dms = self.list_group_dms()
-        channels = self.list_channels()
-        return dms + group_dms + channels
+        return self.list_dm_conversations() + self.list_group_dms() + self.list_channels()
 
     # ------------------------------------------------------------------
     # Message retrieval (includes thread replies)
@@ -224,7 +221,7 @@ class SlackCleaner:
         thread_parents = []
         cursor = None
         while True:
-            kwargs = {"channel": channel_id, "limit": 200}
+            kwargs = {"channel": channel_id, "limit": PAGE_LIMIT}
             if cursor:
                 kwargs["cursor"] = cursor
                 time.sleep(self.READ_DELAY)
@@ -238,7 +235,6 @@ class SlackCleaner:
             if not cursor:
                 break
 
-        # Fetch thread replies
         if include_threads and thread_parents:
             seen_ts = {m["ts"] for m in all_messages}
             for parent_ts in thread_parents:
@@ -249,7 +245,7 @@ class SlackCleaner:
                         "messages",
                         channel=channel_id,
                         ts=parent_ts,
-                        limit=200,
+                        limit=PAGE_LIMIT,
                     )
                     for r in replies:
                         if r["ts"] not in seen_ts:
@@ -312,17 +308,17 @@ class SlackCleaner:
                     on_progress(stats)
             return stats
 
-        # Adaptive delay: starts fast, slows down on rate limits
         delay = self.INITIAL_DELETE_DELAY
         lock = threading.Lock()
 
         def _delete_one(msg):
             nonlocal delay
             try:
-                self._api_call_with_retry(self.client.chat_delete, channel=channel_id, ts=msg["ts"])
+                self._api_call_with_retry(
+                    self.client.chat_delete, channel=channel_id, ts=msg["ts"]
+                )
                 with lock:
                     stats.messages_deleted += 1
-                    # Speed back up gradually after success
                     delay = max(self.INITIAL_DELETE_DELAY, delay * 0.95)
             except SlackApiError as e:
                 error_code = e.response.get("error", "unknown")
@@ -334,7 +330,6 @@ class SlackCleaner:
                         delay = min(self.MAX_DELETE_DELAY, delay * 2)
                     retry_after = int(e.response.headers.get("Retry-After", 5))
                     time.sleep(retry_after)
-                    # Retry once more
                     try:
                         self._api_call_with_retry(
                             self.client.chat_delete, channel=channel_id, ts=msg["ts"]
@@ -351,35 +346,60 @@ class SlackCleaner:
             with lock:
                 if on_progress:
                     on_progress(stats)
-            time.sleep(delay)
+            with lock:
+                current_delay = delay
+            time.sleep(current_delay)
 
         with ThreadPoolExecutor(max_workers=self.MAX_DELETE_WORKERS) as pool:
             list(pool.map(_delete_one, messages))
 
         return stats
 
-    def cleanup_all_dms(
+    def nuke_all(
         self,
         dry_run: bool = False,
-        on_progress: callable = None,
+        on_conversation_start: callable = None,
+        on_conversation_done: callable = None,
+        on_message_progress: callable = None,
     ) -> CleanupStats:
-        """Delete all user's messages across all DM conversations."""
-        total_stats = CleanupStats()
-        dms = self.list_dm_conversations()
+        """Delete ALL messages across ALL conversations (DMs, group DMs, channels, threads).
 
-        for dm in dms:
-            logger.info(f"Cleaning DM with {dm['user_name']}...")
-            messages = self.get_my_messages(dm["id"])
+        This is the shared logic used by both CLI and web.
+
+        Callbacks:
+            on_conversation_start(conv, total): Called before processing each conversation.
+            on_conversation_done(conv, stats): Called after each conversation is done.
+            on_message_progress(stats): Called after each message deletion.
+        """
+        total_stats = CleanupStats()
+        conversations = self.list_all_conversations()
+        admin_mode = self.can_delete_others
+
+        for conv in conversations:
+            if on_conversation_start:
+                on_conversation_start(conv, len(conversations))
+
+            if admin_mode and conv.get("type") == "dm":
+                messages = self.get_all_messages(conv["id"])
+            else:
+                messages = self.get_my_messages(conv["id"])
+
             total_stats.messages_found += len(messages)
             total_stats.conversations_scanned += 1
 
             if messages:
                 result = self.delete_messages(
-                    dm["id"], messages, dry_run=dry_run, on_progress=on_progress
+                    conv["id"],
+                    messages=messages,
+                    dry_run=dry_run,
+                    on_progress=on_message_progress,
                 )
                 total_stats.messages_deleted += result.messages_deleted
                 total_stats.messages_failed += result.messages_failed
                 total_stats.errors.extend(result.errors)
+
+            if on_conversation_done:
+                on_conversation_done(conv, total_stats)
 
         return total_stats
 

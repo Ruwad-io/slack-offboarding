@@ -12,6 +12,8 @@ from redis import Redis
 
 logger = logging.getLogger(__name__)
 
+HEARTBEAT_INTERVAL = 15  # seconds between SSE heartbeat comments
+
 
 class JobManager:
     """Manages background cleanup jobs with Redis-backed state."""
@@ -42,9 +44,10 @@ class JobManager:
             "errors": [],
             "created_at": time.time(),
         }
-        self.redis.setex(self._key(job_id), self.EXPIRY, json.dumps(state))
-        # Store token separately (shorter expiry, same lifecycle)
-        self.redis.setex(f"{self._key(job_id)}:token", self.EXPIRY, token)
+        pipe = self.redis.pipeline()
+        pipe.setex(self._key(job_id), self.EXPIRY, json.dumps(state))
+        pipe.setex(f"{self._key(job_id)}:token", self.EXPIRY, token)
+        pipe.execute()
         return job_id
 
     def get_job(self, job_id: str) -> dict | None:
@@ -55,11 +58,49 @@ class JobManager:
         return None
 
     def update_job(self, job_id: str, **kwargs):
-        """Update job fields."""
-        job = self.get_job(job_id)
-        if job:
+        """Atomically update job fields using Redis WATCH/MULTI."""
+        key = self._key(job_id)
+        for _ in range(3):  # retry on contention
+            try:
+                self.redis.watch(key)
+                data = self.redis.get(key)
+                if not data:
+                    self.redis.unwatch()
+                    return
+                job = json.loads(data)
+                job.update(kwargs)
+                pipe = self.redis.pipeline()
+                pipe.setex(key, self.EXPIRY, json.dumps(job))
+                pipe.execute()
+                return
+            except Exception:
+                continue
+        # Fallback: non-atomic update
+        data = self.redis.get(key)
+        if data:
+            job = json.loads(data)
             job.update(kwargs)
-            self.redis.setex(self._key(job_id), self.EXPIRY, json.dumps(job))
+            self.redis.setex(key, self.EXPIRY, json.dumps(job))
+
+    def increment_job(self, job_id: str, **increments):
+        """Atomically increment numeric job fields."""
+        key = self._key(job_id)
+        for _ in range(3):
+            try:
+                self.redis.watch(key)
+                data = self.redis.get(key)
+                if not data:
+                    self.redis.unwatch()
+                    return
+                job = json.loads(data)
+                for field, delta in increments.items():
+                    job[field] = job.get(field, 0) + delta
+                pipe = self.redis.pipeline()
+                pipe.setex(key, self.EXPIRY, json.dumps(job))
+                pipe.execute()
+                return
+            except Exception:
+                continue
 
     def get_token(self, job_id: str) -> str | None:
         """Get the Slack token for a job."""
@@ -79,8 +120,15 @@ class JobManager:
 
     def stream_progress(self, job_id: str):
         """Generator that yields SSE events until the job completes."""
+        last_heartbeat = time.time()
         while True:
-            job = self.get_job(job_id)
+            try:
+                job = self.get_job(job_id)
+            except Exception:
+                yield ": heartbeat\n\n"
+                time.sleep(2)
+                continue
+
             if not job:
                 yield f"data: {json.dumps({'status': 'not_found'})}\n\n"
                 return
@@ -92,9 +140,15 @@ class JobManager:
 
             time.sleep(1)
 
+            # Send heartbeat to keep connection alive
+            now = time.time()
+            if now - last_heartbeat > HEARTBEAT_INTERVAL:
+                yield ": heartbeat\n\n"
+                last_heartbeat = now
+
 
 def run_cleanup_job(job_manager: JobManager, job_id: str):
-    """Execute a cleanup job in a background thread."""
+    """Execute a cleanup job in a background thread using shared nuke_all()."""
     from src.services.slack_cleaner import SlackCleaner
 
     token = job_manager.get_token(job_id)
@@ -106,64 +160,27 @@ def run_cleanup_job(job_manager: JobManager, job_id: str):
 
     try:
         cleaner = SlackCleaner(token)
-        job = job_manager.get_job(job_id)
-        job_type = job.get("type", "nuke")
 
-        if job_type == "nuke":
-            conversations = cleaner.list_all_conversations()
-        else:
-            conversations = cleaner.list_dm_conversations()
-
-        job_manager.update_job(job_id, conversations_total=len(conversations))
-
-        admin_mode = cleaner.can_delete_others
-
-        for conv in conversations:
+        def on_conversation_start(conv, total):
             job_manager.update_job(
                 job_id,
-                current_conversation=conv.get("user_name", conv.get("name", "?")),
+                conversations_total=total,
+                current_conversation=conv.get("user_name", "?"),
             )
 
-            # In admin mode, delete ALL messages in DMs
-            if admin_mode and conv.get("type") == "dm":
-                messages = cleaner.get_all_messages(conv["id"])
-            else:
-                messages = cleaner.get_my_messages(conv["id"])
-
-            if messages:
-                job_manager.update_job(
-                    job_id,
-                    messages_found=job_manager.get_job(job_id)["messages_found"] + len(messages),
-                )
-
-                def on_progress(stats, _jid=job_id):
-                    current = job_manager.get_job(_jid)
-                    job_manager.update_job(
-                        _jid,
-                        messages_deleted=current["messages_deleted"]
-                        - current.get("_last_deleted", 0)
-                        + stats.messages_deleted,
-                        messages_failed=current["messages_failed"]
-                        - current.get("_last_failed", 0)
-                        + stats.messages_failed,
-                    )
-
-                result = cleaner.delete_messages(
-                    conv["id"], messages=messages, on_progress=None
-                )
-
-                current = job_manager.get_job(job_id)
-                job_manager.update_job(
-                    job_id,
-                    messages_deleted=current["messages_deleted"] + result.messages_deleted,
-                    messages_failed=current["messages_failed"] + result.messages_failed,
-                )
-
-            current = job_manager.get_job(job_id)
+        def on_conversation_done(conv, stats):
             job_manager.update_job(
                 job_id,
-                conversations_done=current["conversations_done"] + 1,
+                conversations_done=stats.conversations_scanned,
+                messages_found=stats.messages_found,
+                messages_deleted=stats.messages_deleted,
+                messages_failed=stats.messages_failed,
             )
+
+        cleaner.nuke_all(
+            on_conversation_start=on_conversation_start,
+            on_conversation_done=on_conversation_done,
+        )
 
         job_manager.update_job(job_id, status="completed", current_conversation="")
 

@@ -423,78 +423,68 @@ def nuke(dry_run: bool):
 
     console.print()
 
-    with console.status("[bold #6366F1]Scanning all conversations...", spinner="dots"):
-        conversations = cleaner.list_all_conversations()
+    overall = None
+    conv_task = None
 
-    dm_count = sum(1 for c in conversations if c["type"] == "dm")
-    group_count = sum(1 for c in conversations if c["type"] == "group_dm")
-    chan_count = sum(1 for c in conversations if c["type"] == "channel")
-    admin_mode = cleaner.can_delete_others
-
-    console.print(
-        f"  Found [bold]{dm_count}[/bold] DMs, "
-        f"[bold]{group_count}[/bold] group DMs, "
-        f"[bold]{chan_count}[/bold] channels"
-    )
-    if admin_mode:
-        console.print(
-            "  [bold yellow]Admin mode:[/bold yellow] will also delete "
-            "[bold]other people's messages[/bold] in your DMs"
-        )
-    console.print()
-
-    total_deleted = 0
-    total_failed = 0
-
-    with Progress(
+    progress = Progress(
         SpinnerColumn(style="#6366F1"),
         TextColumn("[bold]{task.description}"),
         BarColumn(complete_style="#6366F1", finished_style="#10B981"),
         TextColumn("[dim]{task.completed}/{task.total}[/dim]"),
         TimeElapsedColumn(),
         console=console,
-    ) as progress:
-        overall = progress.add_task(
-            f"[#6366F1]Cleaning {len(conversations)} conversations", total=len(conversations)
-        )
+    )
+    progress.start()
 
-        for conv in conversations:
-            # In admin mode, delete ALL messages in DMs (yours + theirs)
-            if admin_mode and conv["type"] == "dm":
-                messages = cleaner.get_all_messages(conv["id"])
-            else:
-                messages = cleaner.get_my_messages(conv["id"])
-
-            if messages:
-                conv_task = progress.add_task(
-                    f"  {conv['user_name']}", total=len(messages)
+    def on_conversation_start(conv, total):
+        nonlocal overall, conv_task
+        if overall is None:
+            admin_mode = cleaner.can_delete_others
+            if admin_mode:
+                console.print(
+                    "  [bold yellow]Admin mode:[/bold yellow] will also delete "
+                    "[bold]other people's messages[/bold] in your DMs\n"
                 )
+            overall = progress.add_task(
+                f"[#6366F1]Cleaning {total} conversations", total=total
+            )
 
-                def on_progress(stats, _task=conv_task):
-                    progress.update(
-                        _task, completed=stats.messages_deleted + stats.messages_failed
-                    )
+    def on_conversation_done(conv, stats):
+        nonlocal conv_task
+        if conv_task is not None:
+            progress.remove_task(conv_task)
+            conv_task = None
+        if overall is not None:
+            progress.update(overall, completed=stats.conversations_scanned)
 
-                stats = cleaner.delete_messages(
-                    conv["id"],
-                    messages=messages,
-                    dry_run=dry_run,
-                    on_progress=on_progress,
-                )
+    def on_message_progress(stats):
+        nonlocal conv_task
+        if conv_task is not None:
+            progress.update(
+                conv_task, completed=stats.messages_deleted + stats.messages_failed
+            )
 
-                total_deleted += stats.messages_deleted
-                total_failed += stats.messages_failed
+    stats = cleaner.nuke_all(
+        dry_run=dry_run,
+        on_conversation_start=on_conversation_start,
+        on_conversation_done=on_conversation_done,
+        on_message_progress=on_message_progress,
+    )
 
-            progress.update(overall, advance=1)
+    progress.stop()
 
     console.print()
     action = "would be deleted" if dry_run else "deleted"
 
     console.print(
         Panel(
-            f"[bold green]{total_deleted}[/bold green] messages {action}\n"
-            + (f"[bold red]{total_failed}[/bold red] failed\n" if total_failed else "")
-            + f"[dim]{len(conversations)} conversations scanned "
+            f"[bold green]{stats.messages_deleted}[/bold green] messages {action}\n"
+            + (
+                f"[bold red]{stats.messages_failed}[/bold red] failed\n"
+                if stats.messages_failed
+                else ""
+            )
+            + f"[dim]{stats.conversations_scanned} conversations scanned "
             + "(DMs + group DMs + channels + threads)[/dim]",
             title="[bold]Mission Complete[/bold]",
             border_style="#10B981",

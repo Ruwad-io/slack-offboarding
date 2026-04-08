@@ -128,12 +128,18 @@ def api_counts_stream(request: Request, session: dict = Depends(require_auth)):
     token = session["slack_token"]
 
     def generate():
-        cleaner = SlackCleaner(token)
-        dms = cleaner.list_dm_conversations()
-        for dm in dms:
-            count = cleaner.count_my_messages(dm["id"])
-            yield f"data: {json.dumps({'id': dm['id'], 'count': count})}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
+        try:
+            cleaner = SlackCleaner(token)
+            dms = cleaner.list_dm_conversations()
+            for dm in dms:
+                try:
+                    count = cleaner.count_my_messages(dm["id"])
+                    yield f"data: {json.dumps({'id': dm['id'], 'count': count})}\n\n"
+                except Exception:
+                    yield f"data: {json.dumps({'id': dm['id'], 'count': 0, 'error': True})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(
         generate(),
