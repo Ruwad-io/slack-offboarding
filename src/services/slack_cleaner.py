@@ -69,7 +69,7 @@ class SlackCleaner:
             except SlackApiError as e:
                 if e.response.get("error") == "ratelimited":
                     retry_after = int(e.response.headers.get("Retry-After", 5))
-                    delay = retry_after * (1.5 ** attempt)
+                    delay = retry_after * (1.5**attempt)
                     logger.debug(f"Rate limited, sleeping {delay:.0f}s (attempt {attempt + 1})")
                     time.sleep(delay)
                     last_error = e
@@ -164,16 +164,16 @@ class SlackCleaner:
                 parts = raw.replace("mpdm-", "").replace("-1", "").split("--")
                 display = ", ".join(p for p in parts if p)
             else:
-                names = [
-                    self._get_user_name(uid) for uid in members if uid != self.user_id
-                ]
+                names = [self._get_user_name(uid) for uid in members if uid != self.user_id]
                 display = ", ".join(names) if names else "Group DM"
-            result.append({
-                "id": ch["id"],
-                "user_name": display,
-                "purpose": ch.get("purpose", {}).get("value", ""),
-                "type": "group_dm",
-            })
+            result.append(
+                {
+                    "id": ch["id"],
+                    "user_name": display,
+                    "purpose": ch.get("purpose", {}).get("value", ""),
+                    "type": "group_dm",
+                }
+            )
         return result
 
     def list_channels(self) -> list[dict]:
@@ -314,9 +314,7 @@ class SlackCleaner:
         def _delete_one(msg):
             nonlocal delay
             try:
-                self._api_call_with_retry(
-                    self.client.chat_delete, channel=channel_id, ts=msg["ts"]
-                )
+                self._api_call_with_retry(self.client.chat_delete, channel=channel_id, ts=msg["ts"])
                 with lock:
                     stats.messages_deleted += 1
                     delay = max(self.INITIAL_DELETE_DELAY, delay * 0.95)

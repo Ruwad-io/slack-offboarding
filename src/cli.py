@@ -88,9 +88,7 @@ def get_cleaner() -> SlackCleaner:
 def print_banner():
     """Print the OffBoarding banner."""
     console.print(Text(LOGO, style="bold #6366F1"))
-    console.print(
-        "  [dim]Clean up your Slack before you leave.[/dim]\n"
-    )
+    console.print("  [dim]Clean up your Slack before you leave.[/dim]\n")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -196,9 +194,7 @@ def scan():
         def on_counted(cid, count):
             progress.update(task, advance=1)
 
-        counts = cleaner.count_my_messages_batch(
-            [dm["id"] for dm in dms], on_each=on_counted
-        )
+        counts = cleaner.count_my_messages_batch([dm["id"] for dm in dms], on_each=on_counted)
 
     for i, dm in enumerate(dms, 1):
         count = counts.get(dm["id"], 0)
@@ -220,9 +216,7 @@ def scan():
         )
     )
     console.print()
-    console.print(
-        "Run [bold cyan]offboarding clean[/bold cyan] to start deleting.\n"
-    )
+    console.print("Run [bold cyan]offboarding clean[/bold cyan] to start deleting.\n")
 
 
 @main.command()
@@ -259,9 +253,7 @@ def clean(clean_all: bool, dry_run: bool):
         def on_counted(cid, count):
             progress.update(task, advance=1)
 
-        counts = cleaner.count_my_messages_batch(
-            [dm["id"] for dm in dms], on_each=on_counted
-        )
+        counts = cleaner.count_my_messages_batch([dm["id"] for dm in dms], on_each=on_counted)
 
     dm_counts = [{**dm, "count": counts.get(dm["id"], 0)} for dm in dms]
 
@@ -338,14 +330,10 @@ def clean(clean_all: bool, dry_run: bool):
         TimeElapsedColumn(),
         console=console,
     ) as progress:
-        overall = progress.add_task(
-            "[#6366F1]Overall progress", total=total_msgs
-        )
+        overall = progress.add_task("[#6366F1]Overall progress", total=total_msgs)
 
         for dm in selected:
-            task = progress.add_task(
-                f"  {dm['user_name']}", total=dm["count"]
-            )
+            task = progress.add_task(f"  {dm['user_name']}", total=dm["count"])
 
             messages = cleaner.get_my_messages(dm["id"])
 
@@ -414,9 +402,7 @@ def nuke(dry_run: bool):
 
     if not dry_run:
         console.print()
-        confirm_text = Prompt.ask(
-            "[bold red]Type 'DELETE EVERYTHING' to confirm[/bold red]"
-        )
+        confirm_text = Prompt.ask("[bold red]Type 'DELETE EVERYTHING' to confirm[/bold red]")
         if confirm_text != "DELETE EVERYTHING":
             console.print("[dim]Cancelled. Good call.[/dim]")
             return
@@ -445,9 +431,7 @@ def nuke(dry_run: bool):
                     "  [bold yellow]Admin mode:[/bold yellow] will also delete "
                     "[bold]other people's messages[/bold] in your DMs\n"
                 )
-            overall = progress.add_task(
-                f"[#6366F1]Cleaning {total} conversations", total=total
-            )
+            overall = progress.add_task(f"[#6366F1]Cleaning {total} conversations", total=total)
 
     def on_conversation_done(conv, stats):
         nonlocal conv_task
@@ -460,9 +444,7 @@ def nuke(dry_run: bool):
     def on_message_progress(stats):
         nonlocal conv_task
         if conv_task is not None:
-            progress.update(
-                conv_task, completed=stats.messages_deleted + stats.messages_failed
-            )
+            progress.update(conv_task, completed=stats.messages_deleted + stats.messages_failed)
 
     stats = cleaner.nuke_all(
         dry_run=dry_run,

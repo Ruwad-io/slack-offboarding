@@ -2,12 +2,16 @@
 OAuth routes for Slack authentication.
 """
 
+import logging
+
 from fastapi import APIRouter, Request
 from starlette.responses import RedirectResponse
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from src.config import Config
+
+logger = logging.getLogger(__name__)
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 config = Config()
@@ -49,7 +53,8 @@ def callback(request: Request, code: str = None, error: str = None):
         return RedirectResponse(url="/dashboard", status_code=302)
 
     except SlackApiError as e:
-        return RedirectResponse(url=f"/?error={e}", status_code=302)
+        logger.error(f"OAuth callback failed: {e}")
+        return RedirectResponse(url="/?error=auth_failed", status_code=302)
 
 
 @auth_router.get("/logout")
