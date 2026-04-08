@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/Ruwad-io/slack-offboarding/compare/v2.0.0...v2.0.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* CI fixes — add httpx dev dep, black formatting, sanitize auth errors ([d25ee82](https://github.com/Ruwad-io/slack-offboarding/commit/d25ee828702d3c5c1469c703642f526fb9acb4fc))
+
 # [2.0.0](https://github.com/Ruwad-io/slack-offboarding/compare/v1.8.0...v2.0.0) (2026-04-07)
 
 
